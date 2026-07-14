@@ -1,5 +1,7 @@
 #pragma once
 
+#include <Arduino.h>
+
 namespace CloudManager {
 void begin();
 void update();
