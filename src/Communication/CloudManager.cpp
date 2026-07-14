@@ -5,6 +5,7 @@
 #include "../Core/Config.h"
 #include "../Core/Logger.h"
 #include "../Machine/MachineEngine.h"
+#include "../Machine/ShiftManager.h"
 #include "../Storage/OfflineQueue.h"
 
 namespace {
@@ -24,41 +25,56 @@ String jsonEscape(const char *value) {
 }
 
 String buildStatusPayload() {
-  const MachineSnapshot snapshot = MachineEngine::snapshot();
+  const MachineSnapshot machine = MachineEngine::snapshot();
+  const ShiftSnapshot shift = ShiftManager::snapshot();
   String payload;
-  payload.reserve(448);
-  payload += F("{\"machine_id\":\"");
+  payload.reserve(640);
+  payload += F("{\"record_type\":\"machine_status\",\"machine_id\":\"");
   payload += jsonEscape(Config::machineId());
   payload += F("\",\"machine_name\":\"");
   payload += jsonEscape(Config::machineName());
   payload += F("\",\"timestamp\":\"");
   payload += TimeManager::iso8601();
   payload += F("\",\"state\":");
-  payload += static_cast<uint8_t>(snapshot.state);
-  payload += F(",\"total\":");
-  payload += snapshot.totalParts;
+  payload += static_cast<uint8_t>(machine.state);
+  payload += F(",\"shift\":");
+  payload += shift.shiftId;
+  payload += F(",\"operator_id\":");
+  payload += shift.operatorId;
+  payload += F(",\"part_number\":");
+  payload += shift.partNumber;
+  payload += F(",\"part_name\":\"");
+  payload += jsonEscape(shift.partName);
+  payload += F("\",\"total\":");
+  payload += machine.totalParts;
   payload += F(",\"reject\":");
-  payload += snapshot.rejectParts;
+  payload += machine.rejectParts;
   payload += F(",\"good\":");
-  payload += snapshot.goodParts;
+  payload += machine.goodParts;
+  payload += F(",\"shift_production\":");
+  payload += shift.production;
+  payload += F(",\"shift_reject\":");
+  payload += shift.reject;
+  payload += F(",\"shift_good\":");
+  payload += shift.good;
   payload += F(",\"target\":");
-  payload += snapshot.targetQuantity;
+  payload += shift.targetQuantity;
   payload += F(",\"idle_seconds\":");
-  payload += snapshot.idleSeconds;
+  payload += machine.idleSeconds;
   payload += F(",\"run_seconds\":");
-  payload += snapshot.runSeconds;
+  payload += machine.runSeconds;
   payload += F(",\"downtime_seconds\":");
-  payload += snapshot.downtimeSeconds;
+  payload += machine.downtimeSeconds;
   payload += F(",\"availability_permille\":");
-  payload += snapshot.availabilityPermille;
+  payload += machine.availabilityPermille;
   payload += F(",\"performance_permille\":");
-  payload += snapshot.performancePermille;
+  payload += machine.performancePermille;
   payload += F(",\"quality_permille\":");
-  payload += snapshot.qualityPermille;
+  payload += machine.qualityPermille;
   payload += F(",\"oee_permille\":");
-  payload += snapshot.oeePermille;
+  payload += machine.oeePermille;
   payload += F(",\"alarm\":");
-  payload += snapshot.alarmActive ? F("true") : F("false");
+  payload += machine.alarmActive ? F("true") : F("false");
   payload += F("}");
   return payload;
 }
@@ -74,6 +90,10 @@ bool upload(const String &payload) {
   ++gFailure;
   return false;
 }
+
+void deliverOrQueue(const String &payload) {
+  if (!WiFiManager::connected() || !upload(payload)) OfflineQueue::push(payload);
+}
 }
 
 void CloudManager::begin() {
@@ -85,6 +105,12 @@ void CloudManager::begin() {
 
 void CloudManager::update() {
   TimeManager::update();
+
+  String shiftSummary;
+  if (ShiftManager::consumeCompletedSummary(shiftSummary)) {
+    deliverOrQueue(shiftSummary);
+  }
+
   if (!WiFiManager::connected()) return;
 
   String queued;
@@ -95,15 +121,10 @@ void CloudManager::update() {
 
   if (millis() - gLastHeartbeatMs >= kHeartbeatMs) {
     gLastHeartbeatMs = millis();
-    const String payload = buildStatusPayload();
-    if (!upload(payload)) OfflineQueue::push(payload);
+    deliverOrQueue(buildStatusPayload());
   }
 }
 
-void CloudManager::queueStatusNow() {
-  const String payload = buildStatusPayload();
-  if (!WiFiManager::connected() || !upload(payload)) OfflineQueue::push(payload);
-}
-
+void CloudManager::queueStatusNow() { deliverOrQueue(buildStatusPayload()); }
 uint32_t CloudManager::uploadSuccessCount() { return gSuccess; }
 uint32_t CloudManager::uploadFailureCount() { return gFailure; }
