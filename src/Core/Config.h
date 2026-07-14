@@ -3,6 +3,12 @@
 
 namespace Config {
 bool load();
+bool save();
+bool update(const String &machineId,
+            const String &machineName,
+            const String &wifiSsid,
+            const String &wifiPassword,
+            const String &googleWebAppUrl);
 const char *machineId();
 const char *machineName();
 const char *wifiSsid();
