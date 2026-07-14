@@ -11,7 +11,8 @@ enum class EventType : uint8_t {
   IdleStarted,
   IdleEnded,
   AlarmActivated,
-  AlarmCleared
+  AlarmCleared,
+  LossSelected
 };
 
 struct Event {
