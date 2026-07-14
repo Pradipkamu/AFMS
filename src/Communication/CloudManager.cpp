@@ -26,7 +26,7 @@ String jsonEscape(const char *value) {
 String buildStatusPayload() {
   const MachineSnapshot snapshot = MachineEngine::snapshot();
   String payload;
-  payload.reserve(256);
+  payload.reserve(448);
   payload += F("{\"machine_id\":\"");
   payload += jsonEscape(Config::machineId());
   payload += F("\",\"machine_name\":\"");
@@ -41,8 +41,22 @@ String buildStatusPayload() {
   payload += snapshot.rejectParts;
   payload += F(",\"good\":");
   payload += snapshot.goodParts;
+  payload += F(",\"target\":");
+  payload += snapshot.targetQuantity;
   payload += F(",\"idle_seconds\":");
   payload += snapshot.idleSeconds;
+  payload += F(",\"run_seconds\":");
+  payload += snapshot.runSeconds;
+  payload += F(",\"downtime_seconds\":");
+  payload += snapshot.downtimeSeconds;
+  payload += F(",\"availability_permille\":");
+  payload += snapshot.availabilityPermille;
+  payload += F(",\"performance_permille\":");
+  payload += snapshot.performancePermille;
+  payload += F(",\"quality_permille\":");
+  payload += snapshot.qualityPermille;
+  payload += F(",\"oee_permille\":");
+  payload += snapshot.oeePermille;
   payload += F(",\"alarm\":");
   payload += snapshot.alarmActive ? F("true") : F("false");
   payload += F("}");
