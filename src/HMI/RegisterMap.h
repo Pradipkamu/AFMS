@@ -8,6 +8,10 @@ constexpr uint16_t CommandTargetQuantity = 2;
 constexpr uint16_t CommandOperatorId = 3;
 constexpr uint16_t CommandShift = 4;
 constexpr uint16_t CommandHeartbeat = 5;
+constexpr uint16_t CommandPartNumberLow = 6;
+constexpr uint16_t CommandPartNumberHigh = 7;
+constexpr uint16_t CommandPartNameStart = 8;   // 8 registers, 16 ASCII characters
+constexpr uint16_t CommandPartNameRegisters = 8;
 
 constexpr uint16_t StatusMachineState = 16;
 constexpr uint16_t StatusProductionLow = 17;
@@ -31,6 +35,19 @@ constexpr uint16_t StatusQualityPermille = 34;
 constexpr uint16_t StatusOeePermille = 35;
 constexpr uint16_t StatusTargetQuantityLow = 36;
 constexpr uint16_t StatusTargetQuantityHigh = 37;
+constexpr uint16_t StatusShift = 38;
+constexpr uint16_t StatusOperatorIdLow = 39;
+constexpr uint16_t StatusOperatorIdHigh = 40;
+constexpr uint16_t StatusPartNumberLow = 41;
+constexpr uint16_t StatusPartNumberHigh = 42;
+constexpr uint16_t StatusShiftProductionLow = 43;
+constexpr uint16_t StatusShiftProductionHigh = 44;
+constexpr uint16_t StatusShiftRejectLow = 45;
+constexpr uint16_t StatusShiftRejectHigh = 46;
+constexpr uint16_t StatusShiftGoodLow = 47;
+constexpr uint16_t StatusShiftGoodHigh = 48;
+constexpr uint16_t StatusTargetRemainingLow = 49;
+constexpr uint16_t StatusTargetRemainingHigh = 50;
 
 constexpr uint16_t RegisterCount = 64;
 }
