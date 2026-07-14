@@ -4,6 +4,7 @@
 #include "../Communication/ModbusSlave.h"
 #include "../Machine/MachineEngine.h"
 #include "../Machine/CycleManager.h"
+#include "../Machine/OEEManager.h"
 #include "../Core/HardwareConfig.h"
 #include "../Core/Logger.h"
 
@@ -11,6 +12,7 @@ namespace {
 uint16_t gRegisters[HMIRegister::RegisterCount] = {0};
 uint16_t gLastLossCode = 0;
 uint16_t gLastCycleSeconds = 0;
+uint16_t gLastTargetQuantity = 0;
 uint32_t gLastSyncMs = 0;
 uint16_t gHeartbeat = 0;
 
@@ -44,8 +46,16 @@ void HMIManager::update() {
 
   const uint16_t cycleSeconds = gRegisters[HMIRegister::CommandCycleTimeSeconds];
   if (cycleSeconds >= 1 && cycleSeconds <= 3600 && cycleSeconds != gLastCycleSeconds) {
-    CycleManager::setCycleTimeMs(static_cast<uint32_t>(cycleSeconds) * 1000UL);
+    const uint32_t cycleMs = static_cast<uint32_t>(cycleSeconds) * 1000UL;
+    CycleManager::setCycleTimeMs(cycleMs);
+    OEEManager::setIdealCycleTimeMs(cycleMs);
     gLastCycleSeconds = cycleSeconds;
+  }
+
+  const uint16_t targetQuantity = gRegisters[HMIRegister::CommandTargetQuantity];
+  if (targetQuantity != gLastTargetQuantity) {
+    OEEManager::setTargetQuantity(targetQuantity);
+    gLastTargetQuantity = targetQuantity;
   }
 
   if (millis() - gLastSyncMs < 250UL) return;
@@ -60,6 +70,13 @@ void HMIManager::update() {
   gRegisters[HMIRegister::StatusAlarm] = snapshot.alarmActive ? 1 : 0;
   gRegisters[HMIRegister::StatusCommunication] = ModbusSlave::connected() ? 1 : 0;
   gRegisters[HMIRegister::StatusEspHeartbeat] = ++gHeartbeat;
+  write32(HMIRegister::StatusRunSecondsLow, snapshot.runSeconds);
+  write32(HMIRegister::StatusDowntimeSecondsLow, snapshot.downtimeSeconds);
+  gRegisters[HMIRegister::StatusAvailabilityPermille] = snapshot.availabilityPermille;
+  gRegisters[HMIRegister::StatusPerformancePermille] = snapshot.performancePermille;
+  gRegisters[HMIRegister::StatusQualityPermille] = snapshot.qualityPermille;
+  gRegisters[HMIRegister::StatusOeePermille] = snapshot.oeePermille;
+  write32(HMIRegister::StatusTargetQuantityLow, snapshot.targetQuantity);
 }
 
 bool HMIManager::connected() { return ModbusSlave::connected(); }
