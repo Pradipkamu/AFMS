@@ -6,6 +6,7 @@
 #include "src/Communication/WiFiManager.h"
 #include "src/Communication/CloudManager.h"
 #include "src/Machine/MachineEngine.h"
+#include "src/Machine/ShiftManager.h"
 #include "src/HMI/HMIManager.h"
 
 void setup() {
@@ -23,13 +24,15 @@ void setup() {
   EventBus::begin();
   WiFiManager::begin(Config::wifiSsid(), Config::wifiPassword());
   MachineEngine::begin();
-  HMIManager::begin();
   CloudManager::begin();
+  ShiftManager::begin();
+  HMIManager::begin();
 }
 
 void loop() {
   WiFiManager::update();
   MachineEngine::update();
+  ShiftManager::update();
   HMIManager::update();
   CloudManager::update();
   EventBus::update();
