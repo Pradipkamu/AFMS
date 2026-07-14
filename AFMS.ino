@@ -2,9 +2,12 @@
 #include "src/Core/Logger.h"
 #include "src/Core/Config.h"
 #include "src/Core/EventBus.h"
+#include "src/Core/SystemHealth.h"
 #include "src/Storage/LittleFSManager.h"
 #include "src/Communication/WiFiManager.h"
 #include "src/Communication/CloudManager.h"
+#include "src/Communication/OtaManager.h"
+#include "src/Communication/WebManager.h"
 #include "src/Machine/MachineEngine.h"
 #include "src/Machine/ShiftManager.h"
 #include "src/HMI/HMIManager.h"
@@ -22,11 +25,14 @@ void setup() {
 
   Config::load();
   EventBus::begin();
+  SystemHealth::begin();
   WiFiManager::begin(Config::wifiSsid(), Config::wifiPassword());
   MachineEngine::begin();
   CloudManager::begin();
   ShiftManager::begin();
   HMIManager::begin();
+  WebManager::begin();
+  OtaManager::begin(Config::machineId());
 }
 
 void loop() {
@@ -35,6 +41,8 @@ void loop() {
   ShiftManager::update();
   HMIManager::update();
   CloudManager::update();
+  WebManager::update();
+  OtaManager::update();
   EventBus::update();
   yield();
 }
