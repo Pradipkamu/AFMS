@@ -86,6 +86,7 @@ MachineSnapshot MachineEngine::snapshot() {
 
 void MachineEngine::acknowledgeLossCode(uint16_t lossCode) {
   if (lossCode == 0 || lossCode > 16 || !AlarmManager::active()) return;
+  EventBus::publish(EventType::LossSelected, lossCode);
   AlarmManager::clear();
   gState = IdleManager::idle() ? MachineState::Idle : MachineState::Running;
 }
