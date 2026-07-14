@@ -6,6 +6,7 @@
 #include "src/Communication/WiFiManager.h"
 #include "src/Communication/CloudManager.h"
 #include "src/Machine/MachineEngine.h"
+#include "src/HMI/HMIManager.h"
 
 void setup() {
   Serial.begin(115200);
@@ -22,12 +23,14 @@ void setup() {
   EventBus::begin();
   WiFiManager::begin(Config::wifiSsid(), Config::wifiPassword());
   MachineEngine::begin();
+  HMIManager::begin();
   CloudManager::begin();
 }
 
 void loop() {
   WiFiManager::update();
   MachineEngine::update();
+  HMIManager::update();
   CloudManager::update();
   EventBus::update();
   yield();
