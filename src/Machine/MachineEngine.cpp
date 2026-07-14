@@ -4,6 +4,7 @@
 #include "CycleManager.h"
 #include "IdleManager.h"
 #include "AlarmManager.h"
+#include "OEEManager.h"
 #include "../Core/EventBus.h"
 #include "../Core/Logger.h"
 #include "../Core/HardwareConfig.h"
@@ -13,6 +14,7 @@ bool gReady = false;
 MachineState gState = MachineState::Ready;
 bool gWasIdle = false;
 bool gWasAlarmActive = false;
+uint32_t gLossStartIdleSeconds = 0;
 }
 
 void MachineEngine::begin() {
@@ -21,6 +23,7 @@ void MachineEngine::begin() {
   CycleManager::begin(HardwareConfig::DefaultCycleTimeMs);
   IdleManager::begin(HardwareConfig::DefaultIdleDelayMs);
   AlarmManager::begin(HardwareConfig::AlarmOutputPin, true);
+  OEEManager::begin(HardwareConfig::DefaultCycleTimeMs);
 
   gState = MachineState::Ready;
   gReady = true;
@@ -63,9 +66,14 @@ void MachineEngine::update() {
   }
 
   const bool alarmNow = AlarmManager::active();
-  if (alarmNow && !gWasAlarmActive) EventBus::publish(EventType::AlarmActivated);
+  if (alarmNow && !gWasAlarmActive) {
+    gLossStartIdleSeconds = IdleManager::idleSeconds();
+    EventBus::publish(EventType::AlarmActivated);
+  }
   if (!alarmNow && gWasAlarmActive) EventBus::publish(EventType::AlarmCleared);
   gWasAlarmActive = alarmNow;
+
+  OEEManager::update(idleNow || alarmNow, ProductionManager::total(), RejectManager::total());
 }
 
 bool MachineEngine::ready() { return gReady; }
@@ -73,6 +81,7 @@ bool MachineEngine::ready() { return gReady; }
 MachineSnapshot MachineEngine::snapshot() {
   const uint32_t total = ProductionManager::total();
   const uint32_t rejects = RejectManager::total();
+  const OEESnapshot oee = OEEManager::snapshot();
   MachineSnapshot value;
   value.state = gState;
   value.totalParts = total;
@@ -80,12 +89,22 @@ MachineSnapshot MachineEngine::snapshot() {
   value.goodParts = total > rejects ? total - rejects : 0;
   value.lastProductionMs = CycleManager::lastProductionMs();
   value.idleSeconds = IdleManager::idleSeconds();
+  value.runSeconds = oee.runSeconds;
+  value.downtimeSeconds = oee.downtimeSeconds;
+  value.targetQuantity = oee.targetQuantity;
+  value.availabilityPermille = oee.availabilityPermille;
+  value.performancePermille = oee.performancePermille;
+  value.qualityPermille = oee.qualityPermille;
+  value.oeePermille = oee.oeePermille;
   value.alarmActive = AlarmManager::active();
   return value;
 }
 
 void MachineEngine::acknowledgeLossCode(uint16_t lossCode) {
   if (lossCode == 0 || lossCode > 16 || !AlarmManager::active()) return;
+  const uint32_t idleNow = IdleManager::idleSeconds();
+  const uint32_t duration = idleNow >= gLossStartIdleSeconds ? idleNow - gLossStartIdleSeconds : 0;
+  OEEManager::recordLoss(lossCode, duration);
   EventBus::publish(EventType::LossSelected, lossCode);
   AlarmManager::clear();
   gState = IdleManager::idle() ? MachineState::Idle : MachineState::Running;
