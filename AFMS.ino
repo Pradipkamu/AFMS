@@ -4,6 +4,7 @@
 #include "src/Core/EventBus.h"
 #include "src/Storage/LittleFSManager.h"
 #include "src/Communication/WiFiManager.h"
+#include "src/Communication/CloudManager.h"
 #include "src/Machine/MachineEngine.h"
 
 void setup() {
@@ -21,11 +22,13 @@ void setup() {
   EventBus::begin();
   WiFiManager::begin(Config::wifiSsid(), Config::wifiPassword());
   MachineEngine::begin();
+  CloudManager::begin();
 }
 
 void loop() {
   WiFiManager::update();
   MachineEngine::update();
+  CloudManager::update();
   EventBus::update();
   yield();
 }
