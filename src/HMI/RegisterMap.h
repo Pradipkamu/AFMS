@@ -21,6 +21,16 @@ constexpr uint16_t StatusIdleSecondsHigh = 24;
 constexpr uint16_t StatusAlarm = 25;
 constexpr uint16_t StatusCommunication = 26;
 constexpr uint16_t StatusEspHeartbeat = 27;
+constexpr uint16_t StatusRunSecondsLow = 28;
+constexpr uint16_t StatusRunSecondsHigh = 29;
+constexpr uint16_t StatusDowntimeSecondsLow = 30;
+constexpr uint16_t StatusDowntimeSecondsHigh = 31;
+constexpr uint16_t StatusAvailabilityPermille = 32;
+constexpr uint16_t StatusPerformancePermille = 33;
+constexpr uint16_t StatusQualityPermille = 34;
+constexpr uint16_t StatusOeePermille = 35;
+constexpr uint16_t StatusTargetQuantityLow = 36;
+constexpr uint16_t StatusTargetQuantityHigh = 37;
 
 constexpr uint16_t RegisterCount = 64;
 }
