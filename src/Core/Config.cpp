@@ -18,7 +18,23 @@ void copyJsonString(const String &json, const char *key, char *dest, size_t size
   int secondQuote = json.indexOf('"', firstQuote + 1);
   if (colon < 0 || firstQuote < 0 || secondQuote < 0) return;
   String value = json.substring(firstQuote + 1, secondQuote);
+  value.replace("\\\"", "\"");
+  value.replace("\\\\", "\\");
   value.toCharArray(dest, size);
+}
+
+String escapeJson(const char *value) {
+  String out;
+  if (!value) return out;
+  while (*value) {
+    if (*value == '"' || *value == '\\') out += '\\';
+    out += *value++;
+  }
+  return out;
+}
+
+void assign(const String &value, char *dest, size_t size) {
+  value.substring(0, size - 1).toCharArray(dest, size);
 }
 }
 
@@ -40,6 +56,42 @@ bool Config::load() {
 
   Logger::info(String(F("Config loaded for ")) + gMachineId);
   return true;
+}
+
+bool Config::save() {
+  File backup = LittleFS.open("/machine.json", "r");
+  if (backup) {
+    File backupOut = LittleFS.open("/machine.json.bak", "w");
+    while (backup.available()) backupOut.write(backup.read());
+    backup.close();
+    backupOut.close();
+  }
+
+  File file = LittleFS.open("/machine.json", "w");
+  if (!file) return false;
+  file.print(F("{\n  \"machine_id\": \"")); file.print(escapeJson(gMachineId));
+  file.print(F("\",\n  \"machine_name\": \"")); file.print(escapeJson(gMachineName));
+  file.print(F("\",\n  \"wifi_ssid\": \"")); file.print(escapeJson(gWifiSsid));
+  file.print(F("\",\n  \"wifi_password\": \"")); file.print(escapeJson(gWifiPassword));
+  file.print(F("\",\n  \"google_web_app_url\": \"")); file.print(escapeJson(gGoogleWebAppUrl));
+  file.print(F("\"\n}\n"));
+  file.close();
+  Logger::info(F("Configuration saved"));
+  return true;
+}
+
+bool Config::update(const String &machineId,
+                    const String &machineName,
+                    const String &wifiSsid,
+                    const String &wifiPassword,
+                    const String &googleWebAppUrl) {
+  if (!machineId.length() || !machineName.length()) return false;
+  assign(machineId, gMachineId, sizeof(gMachineId));
+  assign(machineName, gMachineName, sizeof(gMachineName));
+  assign(wifiSsid, gWifiSsid, sizeof(gWifiSsid));
+  assign(wifiPassword, gWifiPassword, sizeof(gWifiPassword));
+  assign(googleWebAppUrl, gGoogleWebAppUrl, sizeof(gGoogleWebAppUrl));
+  return save();
 }
 
 const char *Config::machineId() { return gMachineId; }
