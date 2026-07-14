@@ -3,6 +3,7 @@
 #include "src/Core/Config.h"
 #include "src/Core/EventBus.h"
 #include "src/Core/SystemHealth.h"
+#include "src/Core/ReliabilityManager.h"
 #include "src/Storage/LittleFSManager.h"
 #include "src/Communication/WiFiManager.h"
 #include "src/Communication/CloudManager.h"
@@ -23,6 +24,7 @@ void setup() {
     Logger::error(F("LittleFS mount failed"));
   }
 
+  ReliabilityManager::begin();
   Config::load();
   EventBus::begin();
   SystemHealth::begin();
@@ -36,11 +38,12 @@ void setup() {
 }
 
 void loop() {
+  ReliabilityManager::update();
   WiFiManager::update();
   MachineEngine::update();
   ShiftManager::update();
   HMIManager::update();
-  CloudManager::update();
+  if (!ReliabilityManager::safeMode()) CloudManager::update();
   WebManager::update();
   OtaManager::update();
   EventBus::update();
