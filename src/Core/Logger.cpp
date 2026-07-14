@@ -19,3 +19,5 @@ void Logger::info(const __FlashStringHelper *message) { write(F("INFO"), String(
 void Logger::warn(const __FlashStringHelper *message) { write(F("WARN"), String(message)); }
 void Logger::error(const __FlashStringHelper *message) { write(F("ERROR"), String(message)); }
 void Logger::info(const String &message) { write(F("INFO"), message); }
+void Logger::warn(const String &message) { write(F("WARN"), message); }
+void Logger::error(const String &message) { write(F("ERROR"), message); }
