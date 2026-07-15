@@ -7,6 +7,7 @@
 #include "src/Core/SerialDiagnostics.h"
 #include "src/Core/HardwareConfig.h"
 #include "src/Storage/LittleFSManager.h"
+#include "src/Storage/RuntimeStateManager.h"
 #include "src/Communication/WiFiManager.h"
 #include "src/Communication/CloudManager.h"
 #include "src/Communication/TelegramClient.h"
@@ -36,6 +37,7 @@ void setup() {
   CloudManager::begin();
   TelegramClient::begin();
   ShiftManager::begin();
+  RuntimeStateManager::begin();
   HMIManager::begin();
   WebManager::begin();
   OtaManager::begin(Config::machineId());
@@ -47,6 +49,7 @@ void loop() {
   WiFiManager::update();
   MachineEngine::update();
   ShiftManager::update();
+  RuntimeStateManager::update();
   HMIManager::update();
   if (!ReliabilityManager::safeMode()) {
     CloudManager::update();
