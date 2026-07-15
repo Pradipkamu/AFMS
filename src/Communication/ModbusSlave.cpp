@@ -88,7 +88,7 @@ void ModbusSlave::begin(uint8_t slaveId, uint16_t *registers, uint16_t registerC
 }
 
 void ModbusSlave::update() {
-  SoftwareSerial &serial = RS485Driver::port();
+  HardwareSerial &serial = RS485Driver::port();
   while (serial.available()) {
     const int value = serial.read();
     if (value >= 0 && gLength < sizeof(gFrame)) gFrame[gLength++] = static_cast<uint8_t>(value);
