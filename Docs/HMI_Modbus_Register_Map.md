@@ -23,10 +23,12 @@ The register addresses below are zero-based Modbus holding-register offsets. Som
 | 2 | 40003 | Target quantity | UINT16 |
 | 3 | 40004 | Operator ID | UINT16 |
 | 4 | 40005 | Shift command | UINT16, 1-3 |
-| 5 | 40006 | HMI heartbeat | UINT16 |
+| 5 | 40006 | HMI heartbeat | UINT16; HMI should increment periodically |
 | 6 | 40007 | Part number low word | UINT16 |
 | 7 | 40008 | Part number high word | UINT16 |
 | 8-15 | 40009-40016 | Part name | 16 ASCII characters, two per register |
+
+Only offsets 0-15 are writable. All status registers are protected against Modbus writes.
 
 ## HMI reads from AFMS
 
@@ -63,6 +65,19 @@ The register addresses below are zero-based Modbus holding-register offsets. Som
 | 59-60 | 40060-40061 | Telegram success count | UINT32, low word first |
 | 61-62 | 40062-40063 | Telegram failure count | UINT32, low word first |
 | 63 | 40064 | Modbus CRC/error count | UINT16 low word |
+| 64-65 | 40065-40066 | Modbus request count | UINT32, low word first |
+| 66 | 40067 | Wi-Fi RSSI | Signed INT16 in dBm |
+| 67 | 40068 | Time synchronized | 0/1 |
+| 68 | 40069 | Year | UINT16, e.g. 2026 |
+| 69 | 40070 | Month | UINT16, 1-12 |
+| 70 | 40071 | Day | UINT16, 1-31 |
+| 71 | 40072 | Hour | UINT16, 0-23 |
+| 72 | 40073 | Minute | UINT16, 0-59 |
+| 73 | 40074 | Second | UINT16, 0-59 |
+| 74 | 40075 | Current cycle time | UINT16 seconds |
+| 75 | 40076 | HMI heartbeat echo | Last value received at 40006 |
+| 76 | 40077 | HMI heartbeat age | UINT16 seconds since 40006 changed |
+| 77 | 40078 | Last Modbus request age | UINT16 milliseconds; 65535 means none received |
 
 ## Machine state values
 
@@ -72,3 +87,7 @@ The register addresses below are zero-based Modbus holding-register offsets. Som
 | 1 | Running |
 | 2 | Idle |
 | 3 | Loss required / alarm interlock |
+
+## Recommended HMI heartbeat
+
+Increment holding register 40006 once every second. Confirm that 40076 follows it and that 40077 remains below 3 seconds. This provides independent supervision of both communication directions.
