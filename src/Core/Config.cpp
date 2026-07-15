@@ -8,6 +8,7 @@ char gMachineName[32] = "PRESS-01";
 char gWifiSsid[33] = "";
 char gWifiPassword[65] = "";
 char gGoogleWebAppUrl[220] = "";
+char gApiToken[96] = "";
 
 void copyJsonString(const String &json, const char *key, char *dest, size_t size) {
   const String token = String('"') + key + "\"";
@@ -53,6 +54,7 @@ bool Config::load() {
   copyJsonString(json, "wifi_ssid", gWifiSsid, sizeof(gWifiSsid));
   copyJsonString(json, "wifi_password", gWifiPassword, sizeof(gWifiPassword));
   copyJsonString(json, "google_web_app_url", gGoogleWebAppUrl, sizeof(gGoogleWebAppUrl));
+  copyJsonString(json, "api_token", gApiToken, sizeof(gApiToken));
 
   Logger::info(String(F("Config loaded for ")) + gMachineId);
   return true;
@@ -74,6 +76,7 @@ bool Config::save() {
   file.print(F("\",\n  \"wifi_ssid\": \"")); file.print(escapeJson(gWifiSsid));
   file.print(F("\",\n  \"wifi_password\": \"")); file.print(escapeJson(gWifiPassword));
   file.print(F("\",\n  \"google_web_app_url\": \"")); file.print(escapeJson(gGoogleWebAppUrl));
+  file.print(F("\",\n  \"api_token\": \"")); file.print(escapeJson(gApiToken));
   file.print(F("\"\n}\n"));
   file.close();
   Logger::info(F("Configuration saved"));
@@ -99,3 +102,4 @@ const char *Config::machineName() { return gMachineName; }
 const char *Config::wifiSsid() { return gWifiSsid; }
 const char *Config::wifiPassword() { return gWifiPassword; }
 const char *Config::googleWebAppUrl() { return gGoogleWebAppUrl; }
+const char *Config::apiToken() { return gApiToken; }
