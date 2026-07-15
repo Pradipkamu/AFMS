@@ -19,11 +19,12 @@ struct Event {
   EventType type;
   uint32_t timestampMs;
   int32_t value;
+  uint32_t durationSeconds;
 };
 
 namespace EventBus {
 void begin();
-bool publish(EventType type, int32_t value = 0);
+bool publish(EventType type, int32_t value = 0, uint32_t durationSeconds = 0);
 bool next(Event &event);
 void update();
 uint16_t droppedCount();
