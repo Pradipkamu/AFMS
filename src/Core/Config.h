@@ -15,6 +15,4 @@ const char *wifiSsid();
 const char *wifiPassword();
 const char *googleWebAppUrl();
 const char *apiToken();
-const char *telegramBotToken();
-const char *telegramChatId();
 }
