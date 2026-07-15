@@ -15,4 +15,10 @@ const char *wifiSsid();
 const char *wifiPassword();
 const char *googleWebAppUrl();
 const char *apiToken();
+const char *shiftName(uint8_t index);
+const char *shiftStart(uint8_t index);
+const char *shiftEnd(uint8_t index);
+uint16_t shiftStartMinutes(uint8_t index);
+uint16_t shiftEndMinutes(uint8_t index);
+bool shiftScheduleValid();
 }
