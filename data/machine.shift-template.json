@@ -1,0 +1,11 @@
+{
+  "shift_1_name": "A",
+  "shift_1_start": "06:00",
+  "shift_1_end": "14:00",
+  "shift_2_name": "B",
+  "shift_2_start": "14:00",
+  "shift_2_end": "22:00",
+  "shift_3_name": "C",
+  "shift_3_start": "22:00",
+  "shift_3_end": "06:00"
+}
