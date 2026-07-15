@@ -5,6 +5,7 @@
 #include "../Communication/WiFiManager.h"
 #include "../Communication/CloudManager.h"
 #include "../Communication/TelegramClient.h"
+#include "../Communication/TimeManager.h"
 #include "../Storage/OfflineQueue.h"
 #include "../Machine/MachineEngine.h"
 #include "../Machine/CycleManager.h"
@@ -12,7 +13,9 @@
 #include "../Machine/ShiftManager.h"
 #include "../Core/HardwareConfig.h"
 #include "../Core/Logger.h"
+#include <ESP8266WiFi.h>
 #include <cstring>
+#include <time.h>
 
 namespace {
 uint16_t gRegisters[HMIRegister::RegisterCount] = {0};
@@ -20,6 +23,8 @@ uint16_t gLastCycleSeconds = 0;
 uint16_t gLastTargetQuantity = 0;
 uint16_t gLastShift = 0;
 uint16_t gLastOperatorId = 0;
+uint16_t gLastHmiHeartbeat = 0;
+uint32_t gLastHmiHeartbeatMs = 0;
 uint32_t gLastPartNumber = 0;
 char gLastPartName[17] = "";
 uint32_t gLastSyncMs = 0;
@@ -49,6 +54,10 @@ void readPartName(char *destination, size_t size) {
   }
   destination[position] = '\0';
 }
+
+uint16_t clamp16(uint32_t value) {
+  return value > 0xFFFFUL ? 0xFFFFU : static_cast<uint16_t>(value);
+}
 }
 
 void HMIManager::begin() {
@@ -58,14 +67,13 @@ void HMIManager::begin() {
                      HMIRegister::RegisterCount);
   gRegisters[HMIRegister::CommandCycleTimeSeconds] = static_cast<uint16_t>(CycleManager::cycleTimeMs() / 1000UL);
   gRegisters[HMIRegister::CommandShift] = 1;
+  gLastHmiHeartbeatMs = millis();
   Logger::info(F("Delta HMI Modbus RTU hardware UART ready"));
 }
 
 void HMIManager::update() {
   ModbusSlave::update();
 
-  // Command register is edge-triggered by clearing it after every request.
-  // This allows the same loss code to be selected on consecutive losses.
   const uint16_t lossCode = gRegisters[HMIRegister::CommandLossCode];
   if (lossCode != 0) {
     MachineEngine::acknowledgeLossCode(lossCode);
@@ -96,6 +104,12 @@ void HMIManager::update() {
   if (operatorId != gLastOperatorId) {
     ShiftManager::setOperatorId(operatorId);
     gLastOperatorId = operatorId;
+  }
+
+  const uint16_t hmiHeartbeat = gRegisters[HMIRegister::CommandHeartbeat];
+  if (hmiHeartbeat != gLastHmiHeartbeat) {
+    gLastHmiHeartbeat = hmiHeartbeat;
+    gLastHmiHeartbeatMs = millis();
   }
 
   char partName[17];
@@ -148,6 +162,31 @@ void HMIManager::update() {
   write32(HMIRegister::StatusTelegramSuccessLow, TelegramClient::successCount());
   write32(HMIRegister::StatusTelegramFailureLow, TelegramClient::failureCount());
   gRegisters[HMIRegister::StatusModbusErrorCount] = static_cast<uint16_t>(ModbusSlave::errorCount() & 0xFFFFU);
+
+  write32(HMIRegister::StatusModbusRequestLow, ModbusSlave::requestCount());
+  gRegisters[HMIRegister::StatusWifiRssi] = WiFiManager::connected()
+      ? static_cast<uint16_t>(static_cast<int16_t>(WiFi.RSSI()))
+      : 0;
+  gRegisters[HMIRegister::StatusTimeSynchronized] = TimeManager::synchronized() ? 1 : 0;
+
+  const time_t now = TimeManager::now();
+  struct tm localTime;
+  if (now > 0 && localtime_r(&now, &localTime)) {
+    gRegisters[HMIRegister::StatusYear] = static_cast<uint16_t>(localTime.tm_year + 1900);
+    gRegisters[HMIRegister::StatusMonth] = static_cast<uint16_t>(localTime.tm_mon + 1);
+    gRegisters[HMIRegister::StatusDay] = static_cast<uint16_t>(localTime.tm_mday);
+    gRegisters[HMIRegister::StatusHour] = static_cast<uint16_t>(localTime.tm_hour);
+    gRegisters[HMIRegister::StatusMinute] = static_cast<uint16_t>(localTime.tm_min);
+    gRegisters[HMIRegister::StatusSecond] = static_cast<uint16_t>(localTime.tm_sec);
+  }
+
+  gRegisters[HMIRegister::StatusCycleTimeSeconds] = static_cast<uint16_t>(CycleManager::cycleTimeMs() / 1000UL);
+  gRegisters[HMIRegister::StatusHmiHeartbeatEcho] = gLastHmiHeartbeat;
+  gRegisters[HMIRegister::StatusHmiHeartbeatAgeSeconds] = clamp16((millis() - gLastHmiHeartbeatMs) / 1000UL);
+  const uint32_t lastRequestMs = ModbusSlave::lastRequestMs();
+  gRegisters[HMIRegister::StatusLastModbusAgeMs] = lastRequestMs == 0
+      ? 0xFFFFU
+      : clamp16(millis() - lastRequestMs);
 }
 
 bool HMIManager::connected() { return ModbusSlave::connected(); }
