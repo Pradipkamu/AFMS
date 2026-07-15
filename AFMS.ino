@@ -8,6 +8,7 @@
 #include "src/Storage/LittleFSManager.h"
 #include "src/Communication/WiFiManager.h"
 #include "src/Communication/CloudManager.h"
+#include "src/Communication/TelegramClient.h"
 #include "src/Communication/OtaManager.h"
 #include "src/Communication/WebManager.h"
 #include "src/Machine/MachineEngine.h"
@@ -32,6 +33,7 @@ void setup() {
   WiFiManager::begin(Config::wifiSsid(), Config::wifiPassword());
   MachineEngine::begin();
   CloudManager::begin();
+  TelegramClient::begin();
   ShiftManager::begin();
   HMIManager::begin();
   WebManager::begin();
@@ -45,7 +47,10 @@ void loop() {
   MachineEngine::update();
   ShiftManager::update();
   HMIManager::update();
-  if (!ReliabilityManager::safeMode()) CloudManager::update();
+  if (!ReliabilityManager::safeMode()) {
+    CloudManager::update();
+    TelegramClient::update();
+  }
   WebManager::update();
   OtaManager::update();
   SerialDiagnostics::update();
