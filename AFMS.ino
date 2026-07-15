@@ -4,6 +4,7 @@
 #include "src/Core/EventBus.h"
 #include "src/Core/SystemHealth.h"
 #include "src/Core/ReliabilityManager.h"
+#include "src/Core/SerialDiagnostics.h"
 #include "src/Storage/LittleFSManager.h"
 #include "src/Communication/WiFiManager.h"
 #include "src/Communication/CloudManager.h"
@@ -35,6 +36,7 @@ void setup() {
   HMIManager::begin();
   WebManager::begin();
   OtaManager::begin(Config::machineId());
+  SerialDiagnostics::begin();
 }
 
 void loop() {
@@ -46,6 +48,7 @@ void loop() {
   if (!ReliabilityManager::safeMode()) CloudManager::update();
   WebManager::update();
   OtaManager::update();
+  SerialDiagnostics::update();
   EventBus::update();
   yield();
 }
