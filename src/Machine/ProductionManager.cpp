@@ -36,9 +36,13 @@ uint32_t ProductionManager::total() {
   return value;
 }
 
-void ProductionManager::reset() {
+void ProductionManager::restore(uint32_t total) {
   noInterrupts();
-  gTotal = 0;
+  gTotal = total;
   gPending = 0;
   interrupts();
+}
+
+void ProductionManager::reset() {
+  restore(0);
 }
