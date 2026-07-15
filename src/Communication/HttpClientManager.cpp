@@ -9,15 +9,21 @@ uint32_t gFailures = 0;
 
 HttpResult request(const char *url, const String *payload) {
   if (!url || !url[0] || !WiFiManager::connected()) return {-1, String()};
+
   BearSSL::WiFiClientSecure client;
   client.setInsecure();
   client.setTimeout(gTimeoutMs);
+
   HTTPClient http;
   if (!http.begin(client, url)) {
     ++gFailures;
     return {-2, String()};
   }
+
   http.setTimeout(gTimeoutMs);
+  http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+  http.setRedirectLimit(5);
+
   int code;
   if (payload) {
     http.addHeader(F("Content-Type"), F("application/json"));
@@ -25,8 +31,10 @@ HttpResult request(const char *url, const String *payload) {
   } else {
     code = http.GET();
   }
+
   const String body = code > 0 ? http.getString() : String();
   http.end();
+
   if (code < 200 || code >= 300) ++gFailures;
   return {code, body};
 }
