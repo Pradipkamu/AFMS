@@ -28,8 +28,10 @@ String buildStatusPayload() {
   const MachineSnapshot machine = MachineEngine::snapshot();
   const ShiftSnapshot shift = ShiftManager::snapshot();
   String payload;
-  payload.reserve(640);
-  payload += F("{\"record_type\":\"machine_status\",\"machine_id\":\"");
+  payload.reserve(768);
+  payload += F("{\"record_type\":\"machine_status\",\"api_token\":\"");
+  payload += jsonEscape(Config::apiToken());
+  payload += F("\",\"machine_id\":\"");
   payload += jsonEscape(Config::machineId());
   payload += F("\",\"machine_name\":\"");
   payload += jsonEscape(Config::machineName());
