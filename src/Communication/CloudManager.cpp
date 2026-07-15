@@ -2,6 +2,7 @@
 #include "HttpClientManager.h"
 #include "TimeManager.h"
 #include "WiFiManager.h"
+#include "TelegramClient.h"
 #include "../Core/Config.h"
 #include "../Core/EventBus.h"
 #include "../Core/Logger.h"
@@ -27,19 +28,10 @@ String jsonEscape(const char *value) {
 
 const __FlashStringHelper *eventName(EventType type) {
   switch (type) {
-    case EventType::SystemBoot: return F("system_boot");
-    case EventType::WifiConnected: return F("wifi_connected");
-    case EventType::WifiDisconnected: return F("wifi_disconnected");
     case EventType::MachineReady: return F("machine_ready");
-    case EventType::IdleStarted: return F("idle_started");
-    case EventType::IdleEnded: return F("idle_ended");
-    case EventType::AlarmActivated: return F("alarm_activated");
-    case EventType::AlarmCleared: return F("alarm_cleared");
     case EventType::LossSelected: return F("loss_selected");
-    case EventType::ProductionPulse: return F("production_pulse");
-    case EventType::RejectPulse: return F("reject_pulse");
+    default: return F("ignored");
   }
-  return F("unknown");
 }
 
 bool shouldUploadEvent(EventType type) {
@@ -53,52 +45,29 @@ String buildHourlySummaryPayload() {
   payload.reserve(768);
   payload += F("{\"record_type\":\"hourly_summary\",\"api_token\":\"");
   payload += jsonEscape(Config::apiToken());
-  payload += F("\",\"machine_id\":\"");
-  payload += jsonEscape(Config::machineId());
-  payload += F("\",\"machine_name\":\"");
-  payload += jsonEscape(Config::machineName());
-  payload += F("\",\"timestamp\":\"");
-  payload += TimeManager::iso8601();
-  payload += F("\",\"state\":");
-  payload += static_cast<uint8_t>(machine.state);
-  payload += F(",\"shift\":");
-  payload += shift.shiftId;
-  payload += F(",\"operator_id\":");
-  payload += shift.operatorId;
-  payload += F(",\"part_number\":");
-  payload += shift.partNumber;
-  payload += F(",\"part_name\":\"");
-  payload += jsonEscape(shift.partName);
-  payload += F("\",\"total\":");
-  payload += machine.totalParts;
-  payload += F(",\"reject\":");
-  payload += machine.rejectParts;
-  payload += F(",\"good\":");
-  payload += machine.goodParts;
-  payload += F(",\"shift_production\":");
-  payload += shift.production;
-  payload += F(",\"shift_reject\":");
-  payload += shift.reject;
-  payload += F(",\"shift_good\":");
-  payload += shift.good;
-  payload += F(",\"target\":");
-  payload += shift.targetQuantity;
-  payload += F(",\"idle_seconds\":");
-  payload += machine.idleSeconds;
-  payload += F(",\"run_seconds\":");
-  payload += machine.runSeconds;
-  payload += F(",\"downtime_seconds\":");
-  payload += machine.downtimeSeconds;
-  payload += F(",\"availability_permille\":");
-  payload += machine.availabilityPermille;
-  payload += F(",\"performance_permille\":");
-  payload += machine.performancePermille;
-  payload += F(",\"quality_permille\":");
-  payload += machine.qualityPermille;
-  payload += F(",\"oee_permille\":");
-  payload += machine.oeePermille;
-  payload += F(",\"alarm\":");
-  payload += machine.alarmActive ? F("true") : F("false");
+  payload += F("\",\"machine_id\":\""); payload += jsonEscape(Config::machineId());
+  payload += F("\",\"machine_name\":\""); payload += jsonEscape(Config::machineName());
+  payload += F("\",\"timestamp\":\""); payload += TimeManager::iso8601();
+  payload += F("\",\"state\":"); payload += static_cast<uint8_t>(machine.state);
+  payload += F(",\"shift\":"); payload += shift.shiftId;
+  payload += F(",\"operator_id\":"); payload += shift.operatorId;
+  payload += F(",\"part_number\":"); payload += shift.partNumber;
+  payload += F(",\"part_name\":\""); payload += jsonEscape(shift.partName);
+  payload += F("\",\"total\":"); payload += machine.totalParts;
+  payload += F(",\"reject\":"); payload += machine.rejectParts;
+  payload += F(",\"good\":"); payload += machine.goodParts;
+  payload += F(",\"shift_production\":"); payload += shift.production;
+  payload += F(",\"shift_reject\":"); payload += shift.reject;
+  payload += F(",\"shift_good\":"); payload += shift.good;
+  payload += F(",\"target\":"); payload += shift.targetQuantity;
+  payload += F(",\"idle_seconds\":"); payload += machine.idleSeconds;
+  payload += F(",\"run_seconds\":"); payload += machine.runSeconds;
+  payload += F(",\"downtime_seconds\":"); payload += machine.downtimeSeconds;
+  payload += F(",\"availability_permille\":"); payload += machine.availabilityPermille;
+  payload += F(",\"performance_permille\":"); payload += machine.performancePermille;
+  payload += F(",\"quality_permille\":"); payload += machine.qualityPermille;
+  payload += F(",\"oee_permille\":"); payload += machine.oeePermille;
+  payload += F(",\"alarm\":"); payload += machine.alarmActive ? F("true") : F("false");
   payload += F("}");
   return payload;
 }
@@ -110,67 +79,35 @@ String buildEventPayload(const Event &event) {
   payload.reserve(544);
   payload += F("{\"record_type\":\"event\",\"api_token\":\"");
   payload += jsonEscape(Config::apiToken());
-  payload += F("\",\"machine_id\":\"");
-  payload += jsonEscape(Config::machineId());
-  payload += F("\",\"machine_name\":\"");
-  payload += jsonEscape(Config::machineName());
-  payload += F("\",\"timestamp\":\"");
-  payload += TimeManager::iso8601();
-  payload += F("\",\"event_name\":\"");
-  payload += eventName(event.type);
-  payload += F("\",\"event_value\":");
-  payload += event.value;
-  payload += F(",\"duration_seconds\":");
-  payload += event.durationSeconds;
+  payload += F("\",\"machine_id\":\""); payload += jsonEscape(Config::machineId());
+  payload += F("\",\"machine_name\":\""); payload += jsonEscape(Config::machineName());
+  payload += F("\",\"timestamp\":\""); payload += TimeManager::iso8601();
+  payload += F("\",\"event_name\":\""); payload += eventName(event.type);
+  payload += F("\",\"event_value\":"); payload += event.value;
+  payload += F(",\"duration_seconds\":"); payload += event.durationSeconds;
   if (event.type == EventType::LossSelected) {
-    payload += F(",\"loss_code\":");
-    payload += event.value;
-    payload += F(",\"loss_duration_seconds\":");
-    payload += event.durationSeconds;
+    payload += F(",\"loss_code\":"); payload += event.value;
+    payload += F(",\"loss_duration_seconds\":"); payload += event.durationSeconds;
   }
-  payload += F(",\"state\":");
-  payload += static_cast<uint8_t>(machine.state);
-  payload += F(",\"shift\":");
-  payload += shift.shiftId;
-  payload += F(",\"operator_id\":");
-  payload += shift.operatorId;
-  payload += F(",\"part_number\":");
-  payload += shift.partNumber;
-  payload += F(",\"part_name\":\"");
-  payload += jsonEscape(shift.partName);
-  payload += F("\",\"total\":");
-  payload += machine.totalParts;
-  payload += F(",\"reject\":");
-  payload += machine.rejectParts;
-  payload += F(",\"good\":");
-  payload += machine.goodParts;
-  payload += F(",\"alarm\":");
-  payload += machine.alarmActive ? F("true") : F("false");
+  payload += F(",\"state\":"); payload += static_cast<uint8_t>(machine.state);
+  payload += F(",\"shift\":"); payload += shift.shiftId;
+  payload += F(",\"operator_id\":"); payload += shift.operatorId;
+  payload += F(",\"part_number\":"); payload += shift.partNumber;
+  payload += F(",\"part_name\":\""); payload += jsonEscape(shift.partName);
+  payload += F("\",\"total\":"); payload += machine.totalParts;
+  payload += F(",\"reject\":"); payload += machine.rejectParts;
+  payload += F(",\"good\":"); payload += machine.goodParts;
+  payload += F(",\"alarm\":"); payload += machine.alarmActive ? F("true") : F("false");
   payload += F("}");
   return payload;
 }
 
 bool upload(const String &payload) {
   const char *url = Config::googleWebAppUrl();
-  if (!url || !url[0]) {
-    Logger::warn(F("[GOOGLE] Web App URL missing"));
-    return false;
-  }
-
+  if (!url || !url[0]) return false;
   const HttpResult result = HttpClientManager::postJson(url, payload);
   Logger::info(String(F("[GOOGLE] HTTP status: ")) + result.code);
-
-  if (result.body.length()) {
-    String preview = result.body;
-    if (preview.length() > 240) preview = preview.substring(0, 240) + F("...");
-    Logger::info(String(F("[GOOGLE] Response: ")) + preview);
-  }
-
-  if (result.success()) {
-    ++gSuccess;
-    return true;
-  }
-
+  if (result.success()) { ++gSuccess; return true; }
   ++gFailure;
   return false;
 }
@@ -184,22 +121,25 @@ void CloudManager::begin() {
   HttpClientManager::begin(10000);
   TimeManager::begin();
   OfflineQueue::begin();
+  TelegramClient::begin();
   gLastHourlySummaryMs = millis();
 }
 
 void CloudManager::update() {
   TimeManager::update();
+  TelegramClient::update();
 
   Event event;
   while (EventBus::next(event)) {
-    if (shouldUploadEvent(event.type)) deliverOrQueue(buildEventPayload(event));
+    if (!shouldUploadEvent(event.type)) continue;
+    deliverOrQueue(buildEventPayload(event));
+    if (event.type == EventType::MachineReady) TelegramClient::sendMachineReady();
+    else if (event.type == EventType::LossSelected && event.value >= 1 && event.value <= 16)
+      TelegramClient::sendLoss(static_cast<uint16_t>(event.value), event.durationSeconds);
   }
 
   String shiftSummary;
-  if (ShiftManager::consumeCompletedSummary(shiftSummary)) {
-    deliverOrQueue(shiftSummary);
-  }
-
+  if (ShiftManager::consumeCompletedSummary(shiftSummary)) deliverOrQueue(shiftSummary);
   if (!WiFiManager::connected()) return;
 
   String queued;
