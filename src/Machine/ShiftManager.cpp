@@ -161,6 +161,15 @@ void ShiftManager::setTargetQuantity(uint32_t targetQuantity) {
   OEEManager::setTargetQuantity(targetQuantity);
 }
 
+void ShiftManager::restoreRuntime(const ShiftSnapshot &state, uint32_t totalProduction, uint32_t totalReject) {
+  gShift = state;
+  copyName(state.partName);
+  gBaseProduction = totalProduction >= state.production ? totalProduction - state.production : 0;
+  gBaseReject = totalReject >= state.reject ? totalReject - state.reject : 0;
+  gScheduleInitialized = true;
+  OEEManager::setTargetQuantity(gShift.targetQuantity);
+}
+
 ShiftSnapshot ShiftManager::snapshot() {
   refreshCounters();
   return gShift;
