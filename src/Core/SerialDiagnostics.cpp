@@ -5,6 +5,7 @@
 #include "../Communication/WiFiManager.h"
 #include "../Communication/TimeManager.h"
 #include "../Communication/CloudManager.h"
+#include "../Communication/TelegramClient.h"
 #include "../HMI/HMIManager.h"
 #include "../Storage/OfflineQueue.h"
 #include <ESP8266WiFi.h>
@@ -23,9 +24,7 @@ uint16_t gLastQueueCount = 0;
 uint32_t gLastHealthMs = 0;
 constexpr uint32_t kHealthIntervalMs = 60000UL;
 
-void divider() {
-  Logger::info(F("================================================="));
-}
+void divider() { Logger::info(F("=================================================")); }
 
 void configStatus(const __FlashStringHelper *name, const char *value) {
   Logger::info(String(F("[CHECK] ")) + String(name) + F(" ........ ") +
@@ -36,6 +35,17 @@ void fileStatus(const char *path, bool required) {
   const bool exists = LittleFS.exists(path);
   const String prefix = required ? F("[CHECK] Required file ") : F("[CHECK] Runtime file ");
   Logger::info(prefix + path + F(" ........ ") + (exists ? F("PRESENT") : F("NOT FOUND")));
+}
+
+void printShiftConfig() {
+  Logger::info(F("[SHIFT] Configured schedule"));
+  for (uint8_t i = 0; i < 3; ++i) {
+    Logger::info(String(F("[SHIFT] ")) + Config::shiftName(i) + F(": ") +
+                 Config::shiftStart(i) + F(" - ") + Config::shiftEnd(i));
+  }
+  Logger::info(Config::shiftScheduleValid()
+                   ? F("[SHIFT] Schedule validation: OK")
+                   : F("[SHIFT] Schedule validation: INVALID"));
 }
 }
 
@@ -53,6 +63,7 @@ void SerialDiagnostics::begin() {
   configStatus(F("WiFi Password"), Config::wifiPassword());
   configStatus(F("Google Web App URL"), Config::googleWebAppUrl());
   configStatus(F("Google API Token"), Config::apiToken());
+  printShiftConfig();
 
   Logger::info(F("[CHECK] LittleFS files"));
   fileStatus("/machine.json", true);
@@ -66,7 +77,9 @@ void SerialDiagnostics::begin() {
   Logger::info(Config::apiToken()[0]
                    ? F("[GOOGLE] API token loaded")
                    : F("[GOOGLE] API token missing"));
-  Logger::warn(F("[TELEGRAM] Module not yet implemented in this firmware"));
+  Logger::info(TelegramClient::configured()
+                   ? F("[TELEGRAM] Configuration loaded")
+                   : F("[TELEGRAM] Bot token or chat ID missing"));
   Logger::info(String(F("[QUEUE] Pending records: ")) + OfflineQueue::count());
   divider();
 
