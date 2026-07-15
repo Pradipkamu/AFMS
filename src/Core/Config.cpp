@@ -1,6 +1,7 @@
 #include "Config.h"
 #include "Logger.h"
 #include <LittleFS.h>
+#include <cstring>
 
 namespace {
 char gMachineId[16] = "MCH001";
