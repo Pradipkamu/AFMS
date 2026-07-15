@@ -57,12 +57,13 @@ bool ShiftCsvManager::appendShift(const ShiftSnapshot &shift,
   }
 
   if (newFile) {
-    file.println(F("Start Time,End Time,Shift,Machine ID,Machine Name,Operator ID,Part Number,Part Name,Target,Production,Reject,Good,Availability %,Performance %,Quality %,OEE %"));
+    file.println(F("Start Time,End Time,Shift ID,Shift Name,Machine ID,Machine Name,Operator ID,Part Number,Part Name,Target,Production,Reject,Good,Availability %,Performance %,Quality %,OEE %"));
   }
 
   file.print(csvText(formatEpoch(shift.startedAtEpoch).c_str())); file.print(',');
   file.print(csvText(formatEpoch(endedAtEpoch).c_str())); file.print(',');
   file.print(shift.shiftId); file.print(',');
+  file.print(csvText(Config::shiftName(shift.shiftId - 1))); file.print(',');
   file.print(csvText(Config::machineId())); file.print(',');
   file.print(csvText(Config::machineName())); file.print(',');
   file.print(shift.operatorId); file.print(',');
@@ -80,8 +81,6 @@ bool ShiftCsvManager::appendShift(const ShiftSnapshot &shift,
 
   Logger::info(String(F("[CSV] Shift appended: ")) + gMonthlyPath);
 
-  // Shift 3 is the final daily shift. Its completion makes the full
-  // monthly file eligible for one Telegram delivery that day.
   if (shift.shiftId == 3) gDailyReportPath = gMonthlyPath;
   return true;
 }
