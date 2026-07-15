@@ -49,16 +49,13 @@ void readPartName(char *destination, size_t size) {
 }
 
 void HMIManager::begin() {
-  RS485Driver::begin(HardwareConfig::Rs485RxPin,
-                    HardwareConfig::Rs485TxPin,
-                    HardwareConfig::Rs485DirectionPin,
-                    HardwareConfig::Rs485Baud);
+  RS485Driver::begin(HardwareConfig::Rs485DirectionPin, HardwareConfig::Rs485Baud);
   ModbusSlave::begin(HardwareConfig::ModbusSlaveId,
                      gRegisters,
                      HMIRegister::RegisterCount);
   gRegisters[HMIRegister::CommandCycleTimeSeconds] = static_cast<uint16_t>(CycleManager::cycleTimeMs() / 1000UL);
   gRegisters[HMIRegister::CommandShift] = 1;
-  Logger::info(F("Delta HMI Modbus RTU ready"));
+  Logger::info(F("Delta HMI Modbus RTU hardware UART ready"));
 }
 
 void HMIManager::update() {
@@ -86,7 +83,7 @@ void HMIManager::update() {
   }
 
   const uint16_t shift = gRegisters[HMIRegister::CommandShift];
-  if (shift >= 1 && shift <= 4 && shift != gLastShift) {
+  if (shift >= 1 && shift <= 3 && shift != gLastShift) {
     ShiftManager::setShift(shift);
     gLastShift = shift;
   }
