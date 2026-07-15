@@ -16,7 +16,6 @@
 
 namespace {
 uint16_t gRegisters[HMIRegister::RegisterCount] = {0};
-uint16_t gLastLossCode = 0;
 uint16_t gLastCycleSeconds = 0;
 uint16_t gLastTargetQuantity = 0;
 uint16_t gLastShift = 0;
@@ -65,10 +64,11 @@ void HMIManager::begin() {
 void HMIManager::update() {
   ModbusSlave::update();
 
+  // Command register is edge-triggered by clearing it after every request.
+  // This allows the same loss code to be selected on consecutive losses.
   const uint16_t lossCode = gRegisters[HMIRegister::CommandLossCode];
-  if (lossCode != 0 && lossCode != gLastLossCode) {
+  if (lossCode != 0) {
     MachineEngine::acknowledgeLossCode(lossCode);
-    gLastLossCode = lossCode;
     gRegisters[HMIRegister::CommandLossCode] = 0;
   }
 
