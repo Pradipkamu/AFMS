@@ -107,7 +107,7 @@ String buildEventPayload(const Event &event) {
   const MachineSnapshot machine = MachineEngine::snapshot();
   const ShiftSnapshot shift = ShiftManager::snapshot();
   String payload;
-  payload.reserve(448);
+  payload.reserve(544);
   payload += F("{\"record_type\":\"event\",\"api_token\":\"");
   payload += jsonEscape(Config::apiToken());
   payload += F("\",\"machine_id\":\"");
@@ -120,6 +120,14 @@ String buildEventPayload(const Event &event) {
   payload += eventName(event.type);
   payload += F("\",\"event_value\":");
   payload += event.value;
+  payload += F(",\"duration_seconds\":");
+  payload += event.durationSeconds;
+  if (event.type == EventType::LossSelected) {
+    payload += F(",\"loss_code\":");
+    payload += event.value;
+    payload += F(",\"loss_duration_seconds\":");
+    payload += event.durationSeconds;
+  }
   payload += F(",\"state\":");
   payload += static_cast<uint8_t>(machine.state);
   payload += F(",\"shift\":");
@@ -128,7 +136,9 @@ String buildEventPayload(const Event &event) {
   payload += shift.operatorId;
   payload += F(",\"part_number\":");
   payload += shift.partNumber;
-  payload += F(",\"total\":");
+  payload += F(",\"part_name\":\"");
+  payload += jsonEscape(shift.partName);
+  payload += F("\",\"total\":");
   payload += machine.totalParts;
   payload += F(",\"reject\":");
   payload += machine.rejectParts;
