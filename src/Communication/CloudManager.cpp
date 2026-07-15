@@ -152,12 +152,25 @@ String buildEventPayload(const Event &event) {
 
 bool upload(const String &payload) {
   const char *url = Config::googleWebAppUrl();
-  if (!url || !url[0]) return false;
+  if (!url || !url[0]) {
+    Logger::warn(F("[GOOGLE] Web App URL missing"));
+    return false;
+  }
+
   const HttpResult result = HttpClientManager::postJson(url, payload);
+  Logger::info(String(F("[GOOGLE] HTTP status: ")) + result.statusCode);
+
+  if (result.body.length()) {
+    String preview = result.body;
+    if (preview.length() > 240) preview = preview.substring(0, 240) + F("...");
+    Logger::info(String(F("[GOOGLE] Response: ")) + preview);
+  }
+
   if (result.success()) {
     ++gSuccess;
     return true;
   }
+
   ++gFailure;
   return false;
 }
