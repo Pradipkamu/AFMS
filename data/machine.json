@@ -3,5 +3,6 @@
   "machine_name": "PRESS-01",
   "wifi_ssid": "YOUR_WIFI_SSID",
   "wifi_password": "YOUR_WIFI_PASSWORD",
-  "google_web_app_url": "YOUR_GOOGLE_APPS_SCRIPT_WEB_APP_URL"
+  "google_web_app_url": "YOUR_GOOGLE_APPS_SCRIPT_WEB_APP_URL",
+  "api_token": "YOUR_AFMS_API_TOKEN"
 }
