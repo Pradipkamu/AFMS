@@ -36,9 +36,13 @@ uint32_t RejectManager::total() {
   return value;
 }
 
-void RejectManager::reset() {
+void RejectManager::restore(uint32_t total) {
   noInterrupts();
-  gTotal = 0;
+  gTotal = total;
   gPending = 0;
   interrupts();
+}
+
+void RejectManager::reset() {
+  restore(0);
 }
