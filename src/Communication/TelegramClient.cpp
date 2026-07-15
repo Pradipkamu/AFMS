@@ -3,6 +3,7 @@
 #include "TimeManager.h"
 #include "../Core/Config.h"
 #include "../Core/Logger.h"
+#include "../Storage/ShiftCsvManager.h"
 #include <ESP8266HTTPClient.h>
 #include <WiFiClientSecureBearSSL.h>
 #include <LittleFS.h>
@@ -16,6 +17,7 @@ uint32_t gFailure = 0;
 uint32_t gLastVerifyAttemptMs = 0;
 uint16_t gPendingLossCode = 0;
 uint32_t gPendingLossDurationSeconds = 0;
+String gPendingMonthlyReport;
 constexpr uint32_t kVerifyRetryMs = 60000UL;
 char gBotToken[96] = "";
 char gChatId[32] = "";
@@ -113,6 +115,82 @@ bool sendText(const String &message) {
   }
   return ok;
 }
+
+bool sendDocument(const String &path) {
+  if (!TelegramClient::configured() || !WiFiManager::connected()) return false;
+  File file = LittleFS.open(path, "r");
+  if (!file) {
+    Logger::warn(F("[TELEGRAM] CSV file not found"));
+    return false;
+  }
+
+  const String boundary = F("----AFMSBoundary7MA4YWxkTrZu0gW");
+  String filename = path;
+  const int slash = filename.lastIndexOf('/');
+  if (slash >= 0) filename = filename.substring(slash + 1);
+
+  String prefix;
+  prefix.reserve(256);
+  prefix += F("--"); prefix += boundary; prefix += F("\r\n");
+  prefix += F("Content-Disposition: form-data; name=\"chat_id\"\r\n\r\n");
+  prefix += gChatId;
+  prefix += F("\r\n--"); prefix += boundary; prefix += F("\r\n");
+  prefix += F("Content-Disposition: form-data; name=\"caption\"\r\n\r\n");
+  prefix += F("AFMS monthly shift report - "); prefix += Config::machineName();
+  prefix += F("\r\n--"); prefix += boundary; prefix += F("\r\n");
+  prefix += F("Content-Disposition: form-data; name=\"document\"; filename=\"");
+  prefix += filename;
+  prefix += F("\"\r\nContent-Type: text/csv\r\n\r\n");
+
+  String suffix;
+  suffix += F("\r\n--"); suffix += boundary; suffix += F("--\r\n");
+  const size_t contentLength = prefix.length() + file.size() + suffix.length();
+
+  BearSSL::WiFiClientSecure client;
+  client.setInsecure();
+  client.setTimeout(15000);
+  if (!client.connect("api.telegram.org", 443)) {
+    file.close();
+    Logger::warn(F("[TELEGRAM] Document connection failed"));
+    return false;
+  }
+
+  client.print(F("POST /bot")); client.print(gBotToken); client.println(F("/sendDocument HTTP/1.1"));
+  client.println(F("Host: api.telegram.org"));
+  client.print(F("Content-Type: multipart/form-data; boundary=")); client.println(boundary);
+  client.print(F("Content-Length: ")); client.println(contentLength);
+  client.println(F("Connection: close"));
+  client.println();
+  client.print(prefix);
+
+  uint8_t buffer[512];
+  while (file.available()) {
+    const size_t count = file.read(buffer, sizeof(buffer));
+    if (count) client.write(buffer, count);
+    yield();
+  }
+  file.close();
+  client.print(suffix);
+
+  const uint32_t started = millis();
+  while (!client.available() && client.connected() && millis() - started < 15000UL) yield();
+  String response;
+  while (client.available()) {
+    response += static_cast<char>(client.read());
+    if (response.length() > 1024) response.remove(0, 256);
+  }
+  client.stop();
+
+  const bool ok = response.indexOf(F(" 200 ")) >= 0 && response.indexOf(F("\"ok\":true")) >= 0;
+  if (ok) {
+    ++gSuccess;
+    Logger::info(String(F("[TELEGRAM] Monthly CSV sent: ")) + filename);
+  } else {
+    ++gFailure;
+    Logger::warn(F("[TELEGRAM] Monthly CSV send failed"));
+  }
+  return ok;
+}
 }
 
 void TelegramClient::begin() {
@@ -121,6 +199,7 @@ void TelegramClient::begin() {
   gReadyMessageSent = false;
   gPendingLossCode = 0;
   gPendingLossDurationSeconds = 0;
+  gPendingMonthlyReport = "";
   loadTelegramConfig();
   if (!configured()) Logger::warn(F("[TELEGRAM] Bot token or chat ID missing"));
   else Logger::info(F("[TELEGRAM] Configuration loaded"));
@@ -130,9 +209,7 @@ void TelegramClient::update() {
   if (!configured() || !WiFiManager::connected()) return;
 
   if (!gVerified) {
-    if (!gVerificationAttempted || millis() - gLastVerifyAttemptMs >= kVerifyRetryMs) {
-      verifyBot();
-    }
+    if (!gVerificationAttempted || millis() - gLastVerifyAttemptMs >= kVerifyRetryMs) verifyBot();
     if (!gVerified) return;
   }
 
@@ -146,13 +223,18 @@ void TelegramClient::update() {
       gPendingLossCode = 0;
       gPendingLossDurationSeconds = 0;
     }
+    return;
+  }
+
+  if (!gPendingMonthlyReport.length()) {
+    ShiftCsvManager::consumeDailyReportReady(gPendingMonthlyReport);
+  }
+  if (gPendingMonthlyReport.length() && sendDocument(gPendingMonthlyReport)) {
+    gPendingMonthlyReport = "";
   }
 }
 
-bool TelegramClient::configured() {
-  return gBotToken[0] && gChatId[0];
-}
-
+bool TelegramClient::configured() { return gBotToken[0] && gChatId[0]; }
 bool TelegramClient::connected() { return gVerified; }
 
 bool TelegramClient::sendMachineReady() {
