@@ -16,7 +16,7 @@ void EventBus::begin() {
   publish(EventType::SystemBoot);
 }
 
-bool EventBus::publish(EventType type, int32_t value) {
+bool EventBus::publish(EventType type, int32_t value, uint32_t durationSeconds) {
   noInterrupts();
   const uint8_t nextHead = static_cast<uint8_t>((gHead + 1U) % kCapacity);
   if (nextHead == gTail) {
@@ -24,7 +24,7 @@ bool EventBus::publish(EventType type, int32_t value) {
     interrupts();
     return false;
   }
-  gQueue[gHead] = {type, millis(), value};
+  gQueue[gHead] = {type, millis(), value, durationSeconds};
   gHead = nextHead;
   interrupts();
   return true;
