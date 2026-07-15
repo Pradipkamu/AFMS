@@ -8,6 +8,7 @@
 #include "../Core/EventBus.h"
 #include "../Core/Logger.h"
 #include "../Core/HardwareConfig.h"
+#include "../Communication/TelegramClient.h"
 
 namespace {
 bool gReady = false;
@@ -108,4 +109,5 @@ void MachineEngine::acknowledgeLossCode(uint16_t lossCode) {
   EventBus::publish(EventType::LossSelected, lossCode, duration);
   AlarmManager::clear();
   gState = IdleManager::idle() ? MachineState::Idle : MachineState::Running;
+  TelegramClient::queueLoss(lossCode, duration);
 }
