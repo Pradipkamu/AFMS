@@ -54,7 +54,9 @@ void completeCurrentShift(bool archiveCsv) {
   gCompletedSummary += TimeManager::iso8601();
   gCompletedSummary += F("\",\"shift\":");
   gCompletedSummary += gShift.shiftId;
-  gCompletedSummary += F(",\"operator_id\":");
+  gCompletedSummary += F(",\"shift_name\":\"");
+  gCompletedSummary += jsonEscape(Config::shiftName(gShift.shiftId - 1));
+  gCompletedSummary += F("\",\"operator_id\":");
   gCompletedSummary += gShift.operatorId;
   gCompletedSummary += F(",\"part_number\":");
   gCompletedSummary += gShift.partNumber;
@@ -91,13 +93,20 @@ void resetBaselines() {
   OEEManager::setTargetQuantity(gShift.targetQuantity);
 }
 
+bool minuteInRange(uint16_t minute, uint16_t start, uint16_t end) {
+  return start < end ? (minute >= start && minute < end)
+                     : (minute >= start || minute < end);
+}
+
 uint16_t scheduledShiftId() {
   const time_t now = TimeManager::now();
   struct tm local;
-  if (!localtime_r(&now, &local)) return gShift.shiftId;
-  if (local.tm_hour >= 6 && local.tm_hour < 14) return 1;
-  if (local.tm_hour >= 14 && local.tm_hour < 22) return 2;
-  return 3;
+  if (!localtime_r(&now, &local)) return 0;
+  const uint16_t minute = static_cast<uint16_t>(local.tm_hour * 60U + local.tm_min);
+  for (uint8_t i = 0; i < 3; ++i) {
+    if (minuteInRange(minute, Config::shiftStartMinutes(i), Config::shiftEndMinutes(i))) return i + 1;
+  }
+  return 0;
 }
 }
 
@@ -105,19 +114,24 @@ void ShiftManager::begin() {
   copyName("");
   ShiftCsvManager::begin();
   resetBaselines();
+  if (!Config::shiftScheduleValid()) Logger::error(F("[SHIFT] Automatic shift management disabled"));
 }
 
 void ShiftManager::update() {
   refreshCounters();
-  if (!TimeManager::synchronized() || millis() - gLastScheduleCheckMs < 1000UL) return;
+  if (!Config::shiftScheduleValid() || !TimeManager::synchronized() || millis() - gLastScheduleCheckMs < 1000UL) return;
   gLastScheduleCheckMs = millis();
   const uint16_t expected = scheduledShiftId();
+  if (expected == 0) {
+    Logger::error(F("[SHIFT] Current time does not match a configured shift"));
+    return;
+  }
 
   if (!gScheduleInitialized) {
     gScheduleInitialized = true;
     gShift.shiftId = expected;
     resetBaselines();
-    Logger::info(String(F("[SHIFT] Active shift: ")) + expected);
+    Logger::info(String(F("[SHIFT] Active shift: ")) + Config::shiftName(expected - 1));
     return;
   }
 
@@ -129,7 +143,7 @@ void ShiftManager::setShift(uint16_t shiftId) {
   completeCurrentShift(true);
   gShift.shiftId = shiftId;
   resetBaselines();
-  Logger::info(String(F("[SHIFT] Changed to shift: ")) + shiftId);
+  Logger::info(String(F("[SHIFT] Changed to shift: ")) + Config::shiftName(shiftId - 1));
 }
 
 void ShiftManager::setOperatorId(uint32_t operatorId) { gShift.operatorId = operatorId; }
