@@ -20,6 +20,7 @@ void setShift(uint16_t shiftId);
 void setOperatorId(uint32_t operatorId);
 void setPart(uint32_t partNumber, const char *partName);
 void setTargetQuantity(uint32_t targetQuantity);
+void restoreRuntime(const ShiftSnapshot &state, uint32_t totalProduction, uint32_t totalReject);
 ShiftSnapshot snapshot();
 bool consumeCompletedSummary(String &json);
 }
