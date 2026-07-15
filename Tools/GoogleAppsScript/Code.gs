@@ -13,10 +13,10 @@ const CONFIG = Object.freeze({
 
 const EVENT_HEADERS = Object.freeze([
   'Server Received At', 'Device Timestamp', 'Record Type', 'Event Name',
-  'Event Value', 'Machine ID', 'Machine Name', 'State', 'Shift',
-  'Operator ID', 'Part Number', 'Part Name', 'Total', 'Reject', 'Good',
-  'Target', 'Availability %', 'Performance %', 'Quality %', 'OEE %',
-  'Alarm Active'
+  'Event Value', 'Loss Code', 'Loss Duration Seconds', 'Machine ID',
+  'Machine Name', 'State', 'Shift', 'Operator ID', 'Part Number', 'Part Name',
+  'Total', 'Reject', 'Good', 'Target', 'Availability %', 'Performance %',
+  'Quality %', 'OEE %', 'Alarm Active'
 ]);
 
 const HOURLY_HEADERS = Object.freeze([
@@ -97,9 +97,11 @@ function initializeAfmsSheets() {
   const spreadsheet = SpreadsheetApp.openById(spreadsheetId);
   const events = getOrCreate_(spreadsheet, CONFIG.EVENTS_SHEET, EVENT_HEADERS);
   const hourly = getOrCreate_(spreadsheet, CONFIG.HOURLY_SHEET, HOURLY_HEADERS);
+  ensureHeaders_(events, EVENT_HEADERS);
+  ensureHeaders_(hourly, HOURLY_HEADERS);
   events.getRange('A:B').setNumberFormat('dd-MMM-yyyy HH:mm:ss');
   hourly.getRange('A:B').setNumberFormat('dd-MMM-yyyy HH:mm:ss');
-  events.getRange('Q:T').setNumberFormat('0.0');
+  events.getRange('S:V').setNumberFormat('0.0');
   hourly.getRange('U:X').setNumberFormat('0.0');
   events.autoResizeColumns(1, EVENT_HEADERS.length);
   hourly.autoResizeColumns(1, HOURLY_HEADERS.length);
@@ -107,30 +109,34 @@ function initializeAfmsSheets() {
 
 function appendEvent_(spreadsheet, data) {
   const sheet = getOrCreate_(spreadsheet, CONFIG.EVENTS_SHEET, EVENT_HEADERS);
+  ensureHeaders_(sheet, EVENT_HEADERS);
   const production = number_(data.production !== undefined ? data.production : data.total);
   const reject = number_(data.reject);
   const good = data.good !== undefined ? number_(data.good) : Math.max(0, production - reject);
+  const isLoss = String(data.event_name || '') === 'loss_selected';
 
   const row = [
     new Date(), timestamp_(data.timestamp), text_(data.record_type),
     text_(data.event_name || (data.record_type === 'shift_summary' ? 'shift_summary' : '')),
-    number_(data.event_value), text_(data.machine_id), text_(data.machine_name),
-    number_(data.state), number_(data.shift), number_(data.operator_id),
-    number_(data.part_number), text_(data.part_name), production, reject, good,
-    number_(data.target), percent_(data.availability_permille),
-    percent_(data.performance_permille), percent_(data.quality_permille),
-    percent_(data.oee_permille), Boolean(data.alarm)
+    number_(data.event_value), isLoss ? number_(data.loss_code || data.event_value) : '',
+    isLoss ? number_(data.loss_duration_seconds || data.duration_seconds) : '',
+    text_(data.machine_id), text_(data.machine_name), number_(data.state),
+    number_(data.shift), number_(data.operator_id), number_(data.part_number),
+    text_(data.part_name), production, reject, good, number_(data.target),
+    percent_(data.availability_permille), percent_(data.performance_permille),
+    percent_(data.quality_permille), percent_(data.oee_permille), Boolean(data.alarm)
   ];
 
   sheet.appendRow(row);
   const rowNumber = sheet.getLastRow();
   sheet.getRange(rowNumber, 1, 1, 2).setNumberFormat('dd-MMM-yyyy HH:mm:ss');
-  sheet.getRange(rowNumber, 17, 1, 4).setNumberFormat('0.0');
+  sheet.getRange(rowNumber, 19, 1, 4).setNumberFormat('0.0');
   return {sheet: sheet.getName(), row: rowNumber};
 }
 
 function appendHourly_(spreadsheet, data) {
   const sheet = getOrCreate_(spreadsheet, CONFIG.HOURLY_SHEET, HOURLY_HEADERS);
+  ensureHeaders_(sheet, HOURLY_HEADERS);
   const target = number_(data.target);
   const shiftGood = number_(data.shift_good);
 
@@ -162,6 +168,12 @@ function getOrCreate_(spreadsheet, name, headers) {
     sheet.setFrozenRows(1);
   }
   return sheet;
+}
+
+function ensureHeaders_(sheet, headers) {
+  sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+  sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold').setWrap(true);
+  sheet.setFrozenRows(1);
 }
 
 function json_(value) {
