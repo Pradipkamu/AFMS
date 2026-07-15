@@ -1,0 +1,75 @@
+{
+  "project": "AFMS",
+  "target": {
+    "model": "DOP-107CV",
+    "width": 800,
+    "height": 480
+  },
+  "screen": {
+    "number": 1,
+    "name": "Main",
+    "background": "#1E1E1E",
+    "objects": [
+      {
+        "id": "title",
+        "type": "text",
+        "x": 20,
+        "y": 12,
+        "width": 760,
+        "height": 42,
+        "text": "AFMS MAIN CONTROL"
+      },
+      {
+        "id": "start_button",
+        "type": "momentary_button",
+        "x": 30,
+        "y": 90,
+        "width": 150,
+        "height": 64,
+        "text": "START",
+        "address": "M100"
+      },
+      {
+        "id": "stop_button",
+        "type": "momentary_button",
+        "x": 200,
+        "y": 90,
+        "width": 150,
+        "height": 64,
+        "text": "STOP",
+        "address": "M101"
+      },
+      {
+        "id": "run_lamp",
+        "type": "bit_lamp",
+        "x": 390,
+        "y": 100,
+        "width": 48,
+        "height": 48,
+        "text": "RUN",
+        "address": "M110"
+      },
+      {
+        "id": "speed_display",
+        "type": "numeric_display",
+        "x": 480,
+        "y": 92,
+        "width": 140,
+        "height": 58,
+        "text": "RPM",
+        "address": "D100",
+        "format": "unsigned_16"
+      },
+      {
+        "id": "settings_button",
+        "type": "screen_change_button",
+        "x": 640,
+        "y": 400,
+        "width": 130,
+        "height": 54,
+        "text": "SETTINGS",
+        "target_screen": 2
+      }
+    ]
+  }
+}
