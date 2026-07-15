@@ -9,7 +9,7 @@ char gMonthlyPath[40] = "";
 String gDailyReportPath;
 
 String csvText(const char *value) {
-  String out = '"';
+  String out("\"");
   if (value) {
     while (*value) {
       if (*value == '"') out += '"';
