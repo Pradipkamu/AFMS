@@ -21,18 +21,36 @@ HttpResult request(const char *url, const String *payload) {
   }
 
   http.setTimeout(gTimeoutMs);
-  http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
-  http.setRedirectLimit(5);
+
+  // Google Apps Script commonly processes the POST and then returns a redirect
+  // to script.googleusercontent.com for the response body. Automatically
+  // following that redirect with the original POST can create a duplicate row.
+  // Therefore POST redirects are not followed. A trusted Google response
+  // redirect is treated as successful delivery after the original POST.
+  http.setFollowRedirects(HTTPC_DISABLE_FOLLOW_REDIRECTS);
+  const char *headerKeys[] = {"Location"};
+  http.collectHeaders(headerKeys, 1);
 
   int code;
   if (payload) {
     http.addHeader(F("Content-Type"), F("application/json"));
     code = http.POST(*payload);
   } else {
+    http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
     code = http.GET();
   }
 
-  const String body = code > 0 ? http.getString() : String();
+  String body = code > 0 ? http.getString() : String();
+
+  if (payload && (code == 301 || code == 302 || code == 303 || code == 307 || code == 308)) {
+    const String location = http.header(F("Location"));
+    if (location.indexOf(F("script.googleusercontent.com")) >= 0 ||
+        location.indexOf(F("googleusercontent.com")) >= 0) {
+      code = 204;
+      body = F("Google Apps Script redirect accepted; POST already processed");
+    }
+  }
+
   http.end();
 
   if (code < 200 || code >= 300) ++gFailures;
