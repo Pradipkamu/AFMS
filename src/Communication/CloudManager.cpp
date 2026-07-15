@@ -158,7 +158,7 @@ bool upload(const String &payload) {
   }
 
   const HttpResult result = HttpClientManager::postJson(url, payload);
-  Logger::info(String(F("[GOOGLE] HTTP status: ")) + result.statusCode);
+  Logger::info(String(F("[GOOGLE] HTTP status: ")) + result.code);
 
   if (result.body.length()) {
     String preview = result.body;
