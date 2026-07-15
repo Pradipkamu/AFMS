@@ -48,6 +48,19 @@ constexpr uint16_t StatusShiftGoodLow = 47;
 constexpr uint16_t StatusShiftGoodHigh = 48;
 constexpr uint16_t StatusTargetRemainingLow = 49;
 constexpr uint16_t StatusTargetRemainingHigh = 50;
+constexpr uint16_t StatusWifiConnected = 51;
+constexpr uint16_t StatusGoogleConnected = 52;
+constexpr uint16_t StatusTelegramConnected = 53;
+constexpr uint16_t StatusOfflineQueueCount = 54;
+constexpr uint16_t StatusGoogleSuccessLow = 55;
+constexpr uint16_t StatusGoogleSuccessHigh = 56;
+constexpr uint16_t StatusGoogleFailureLow = 57;
+constexpr uint16_t StatusGoogleFailureHigh = 58;
+constexpr uint16_t StatusTelegramSuccessLow = 59;
+constexpr uint16_t StatusTelegramSuccessHigh = 60;
+constexpr uint16_t StatusTelegramFailureLow = 61;
+constexpr uint16_t StatusTelegramFailureHigh = 62;
+constexpr uint16_t StatusModbusErrorCount = 63;
 
 constexpr uint16_t RegisterCount = 64;
 }
