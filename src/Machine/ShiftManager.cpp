@@ -2,6 +2,7 @@
 #include "MachineEngine.h"
 #include "OEEManager.h"
 #include "../Communication/TimeManager.h"
+#include "../Core/Config.h"
 #include <cstring>
 
 namespace {
@@ -9,6 +10,16 @@ ShiftSnapshot gShift = {1, 0, 0, "", 0, 0, 0, 0, 0};
 uint32_t gBaseProduction = 0;
 uint32_t gBaseReject = 0;
 String gCompletedSummary;
+
+String jsonEscape(const char *value) {
+  String out;
+  if (!value) return out;
+  while (*value) {
+    if (*value == '"' || *value == '\\') out += '\\';
+    out += *value++;
+  }
+  return out;
+}
 
 void copyName(const char *name) {
   if (!name) name = "";
@@ -26,14 +37,22 @@ void refreshCounters() {
 void completeCurrentShift() {
   refreshCounters();
   const OEESnapshot oee = OEEManager::snapshot();
-  gCompletedSummary = F("{\"record_type\":\"shift_summary\",\"shift\":");
+  gCompletedSummary = F("{\"record_type\":\"shift_summary\",\"api_token\":\"");
+  gCompletedSummary += jsonEscape(Config::apiToken());
+  gCompletedSummary += F("\",\"machine_id\":\"");
+  gCompletedSummary += jsonEscape(Config::machineId());
+  gCompletedSummary += F("\",\"machine_name\":\"");
+  gCompletedSummary += jsonEscape(Config::machineName());
+  gCompletedSummary += F("\",\"timestamp\":\"");
+  gCompletedSummary += TimeManager::iso8601();
+  gCompletedSummary += F("\",\"shift\":");
   gCompletedSummary += gShift.shiftId;
   gCompletedSummary += F(",\"operator_id\":");
   gCompletedSummary += gShift.operatorId;
   gCompletedSummary += F(",\"part_number\":");
   gCompletedSummary += gShift.partNumber;
   gCompletedSummary += F(",\"part_name\":\"");
-  gCompletedSummary += gShift.partName;
+  gCompletedSummary += jsonEscape(gShift.partName);
   gCompletedSummary += F("\",\"target\":");
   gCompletedSummary += gShift.targetQuantity;
   gCompletedSummary += F(",\"production\":");
