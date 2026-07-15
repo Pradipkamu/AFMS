@@ -105,7 +105,7 @@ void MachineEngine::acknowledgeLossCode(uint16_t lossCode) {
   const uint32_t idleNow = IdleManager::idleSeconds();
   const uint32_t duration = idleNow >= gLossStartIdleSeconds ? idleNow - gLossStartIdleSeconds : 0;
   OEEManager::recordLoss(lossCode, duration);
-  EventBus::publish(EventType::LossSelected, lossCode);
+  EventBus::publish(EventType::LossSelected, lossCode, duration);
   AlarmManager::clear();
   gState = IdleManager::idle() ? MachineState::Idle : MachineState::Running;
 }
