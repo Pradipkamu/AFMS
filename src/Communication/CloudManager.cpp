@@ -43,7 +43,7 @@ const __FlashStringHelper *eventName(EventType type) {
 }
 
 bool shouldUploadEvent(EventType type) {
-  return type != EventType::ProductionPulse && type != EventType::RejectPulse;
+  return type == EventType::MachineReady || type == EventType::LossSelected;
 }
 
 String buildHourlySummaryPayload() {
