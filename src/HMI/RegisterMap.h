@@ -62,5 +62,21 @@ constexpr uint16_t StatusTelegramFailureLow = 61;
 constexpr uint16_t StatusTelegramFailureHigh = 62;
 constexpr uint16_t StatusModbusErrorCount = 63;
 
-constexpr uint16_t RegisterCount = 64;
+// Commit 0022 additions. Existing addresses above remain frozen.
+constexpr uint16_t StatusModbusRequestLow = 64;
+constexpr uint16_t StatusModbusRequestHigh = 65;
+constexpr uint16_t StatusWifiRssi = 66;              // signed dBm stored as INT16
+constexpr uint16_t StatusTimeSynchronized = 67;      // 0/1
+constexpr uint16_t StatusYear = 68;
+constexpr uint16_t StatusMonth = 69;
+constexpr uint16_t StatusDay = 70;
+constexpr uint16_t StatusHour = 71;
+constexpr uint16_t StatusMinute = 72;
+constexpr uint16_t StatusSecond = 73;
+constexpr uint16_t StatusCycleTimeSeconds = 74;
+constexpr uint16_t StatusHmiHeartbeatEcho = 75;
+constexpr uint16_t StatusHmiHeartbeatAgeSeconds = 76;
+constexpr uint16_t StatusLastModbusAgeMs = 77;
+
+constexpr uint16_t RegisterCount = 80;
 }
