@@ -3,13 +3,18 @@
 #include "OEEManager.h"
 #include "../Communication/TimeManager.h"
 #include "../Core/Config.h"
+#include "../Core/Logger.h"
+#include "../Storage/ShiftCsvManager.h"
 #include <cstring>
+#include <time.h>
 
 namespace {
 ShiftSnapshot gShift = {1, 0, 0, "", 0, 0, 0, 0, 0};
 uint32_t gBaseProduction = 0;
 uint32_t gBaseReject = 0;
 String gCompletedSummary;
+bool gScheduleInitialized = false;
+uint32_t gLastScheduleCheckMs = 0;
 
 String jsonEscape(const char *value) {
   String out;
@@ -34,9 +39,11 @@ void refreshCounters() {
   gShift.good = gShift.production > gShift.reject ? gShift.production - gShift.reject : 0;
 }
 
-void completeCurrentShift() {
+void completeCurrentShift(bool archiveCsv) {
   refreshCounters();
   const OEESnapshot oee = OEEManager::snapshot();
+  const uint32_t endedAtEpoch = static_cast<uint32_t>(TimeManager::now());
+
   gCompletedSummary = F("{\"record_type\":\"shift_summary\",\"api_token\":\"");
   gCompletedSummary += jsonEscape(Config::apiToken());
   gCompletedSummary += F("\",\"machine_id\":\"");
@@ -70,6 +77,8 @@ void completeCurrentShift() {
   gCompletedSummary += F(",\"oee_permille\":");
   gCompletedSummary += oee.oeePermille;
   gCompletedSummary += F("}");
+
+  if (archiveCsv) ShiftCsvManager::appendShift(gShift, oee, endedAtEpoch);
 }
 
 void resetBaselines() {
@@ -81,27 +90,53 @@ void resetBaselines() {
   OEEManager::resetShift();
   OEEManager::setTargetQuantity(gShift.targetQuantity);
 }
+
+uint16_t scheduledShiftId() {
+  const time_t now = TimeManager::now();
+  struct tm local;
+  if (!localtime_r(&now, &local)) return gShift.shiftId;
+  if (local.tm_hour >= 6 && local.tm_hour < 14) return 1;
+  if (local.tm_hour >= 14 && local.tm_hour < 22) return 2;
+  return 3;
+}
 }
 
 void ShiftManager::begin() {
   copyName("");
+  ShiftCsvManager::begin();
   resetBaselines();
 }
 
-void ShiftManager::update() { refreshCounters(); }
+void ShiftManager::update() {
+  refreshCounters();
+  if (!TimeManager::synchronized() || millis() - gLastScheduleCheckMs < 1000UL) return;
+  gLastScheduleCheckMs = millis();
+  const uint16_t expected = scheduledShiftId();
+
+  if (!gScheduleInitialized) {
+    gScheduleInitialized = true;
+    gShift.shiftId = expected;
+    resetBaselines();
+    Logger::info(String(F("[SHIFT] Active shift: ")) + expected);
+    return;
+  }
+
+  if (expected != gShift.shiftId) setShift(expected);
+}
 
 void ShiftManager::setShift(uint16_t shiftId) {
-  if (shiftId == 0 || shiftId == gShift.shiftId) return;
-  completeCurrentShift();
+  if (shiftId == 0 || shiftId > 3 || shiftId == gShift.shiftId) return;
+  completeCurrentShift(true);
   gShift.shiftId = shiftId;
   resetBaselines();
+  Logger::info(String(F("[SHIFT] Changed to shift: ")) + shiftId);
 }
 
 void ShiftManager::setOperatorId(uint32_t operatorId) { gShift.operatorId = operatorId; }
 
 void ShiftManager::setPart(uint32_t partNumber, const char *partName) {
   if (partNumber == gShift.partNumber && strncmp(gShift.partName, partName ? partName : "", sizeof(gShift.partName)) == 0) return;
-  completeCurrentShift();
+  completeCurrentShift(false);
   gShift.partNumber = partNumber;
   copyName(partName);
   resetBaselines();
