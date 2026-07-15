@@ -43,7 +43,7 @@ HttpResult request(const char *url, const String *payload) {
   String body = code > 0 ? http.getString() : String();
 
   if (payload && (code == 301 || code == 302 || code == 303 || code == 307 || code == 308)) {
-    const String location = http.header(F("Location"));
+    const String location = http.header("Location");
     if (location.indexOf(F("script.googleusercontent.com")) >= 0 ||
         location.indexOf(F("googleusercontent.com")) >= 0) {
       code = 204;
