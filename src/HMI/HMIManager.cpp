@@ -2,6 +2,10 @@
 #include "RegisterMap.h"
 #include "../Communication/RS485Driver.h"
 #include "../Communication/ModbusSlave.h"
+#include "../Communication/WiFiManager.h"
+#include "../Communication/CloudManager.h"
+#include "../Communication/TelegramClient.h"
+#include "../Storage/OfflineQueue.h"
 #include "../Machine/MachineEngine.h"
 #include "../Machine/CycleManager.h"
 #include "../Machine/OEEManager.h"
@@ -134,6 +138,16 @@ void HMIManager::update() {
                                  ? shiftData.targetQuantity - shiftData.production
                                  : 0;
   write32(HMIRegister::StatusTargetRemainingLow, remaining);
+
+  gRegisters[HMIRegister::StatusWifiConnected] = WiFiManager::connected() ? 1 : 0;
+  gRegisters[HMIRegister::StatusGoogleConnected] = CloudManager::uploadSuccessCount() > 0 ? 1 : 0;
+  gRegisters[HMIRegister::StatusTelegramConnected] = TelegramClient::connected() ? 1 : 0;
+  gRegisters[HMIRegister::StatusOfflineQueueCount] = OfflineQueue::count();
+  write32(HMIRegister::StatusGoogleSuccessLow, CloudManager::uploadSuccessCount());
+  write32(HMIRegister::StatusGoogleFailureLow, CloudManager::uploadFailureCount());
+  write32(HMIRegister::StatusTelegramSuccessLow, TelegramClient::successCount());
+  write32(HMIRegister::StatusTelegramFailureLow, TelegramClient::failureCount());
+  gRegisters[HMIRegister::StatusModbusErrorCount] = static_cast<uint16_t>(ModbusSlave::errorCount() & 0xFFFFU);
 }
 
 bool HMIManager::connected() { return ModbusSlave::connected(); }
