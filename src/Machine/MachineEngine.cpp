@@ -8,6 +8,7 @@
 #include "../Core/EventBus.h"
 #include "../Core/Logger.h"
 #include "../Core/HardwareConfig.h"
+#include "../Core/PulseConfig.h"
 #include "../Communication/TelegramClient.h"
 
 namespace {
@@ -19,8 +20,11 @@ uint32_t gLossStartIdleSeconds = 0;
 }
 
 void MachineEngine::begin() {
-  ProductionManager::begin(HardwareConfig::ProductionInputPin, HardwareConfig::InputDebounceUs);
-  RejectManager::begin(HardwareConfig::RejectInputPin, HardwareConfig::InputDebounceUs);
+  PulseConfig::load();
+  ProductionManager::begin(HardwareConfig::ProductionInputPin,
+                           PulseConfig::productionDebounceMs() * 1000UL);
+  RejectManager::begin(HardwareConfig::RejectInputPin,
+                       PulseConfig::rejectDebounceMs() * 1000UL);
   CycleManager::begin(HardwareConfig::DefaultCycleTimeMs);
   IdleManager::begin(HardwareConfig::DefaultIdleDelayMs);
   AlarmManager::begin(HardwareConfig::AlarmOutputPin, true);
