@@ -14,4 +14,5 @@ const char *machineName();
 const char *wifiSsid();
 const char *wifiPassword();
 const char *googleWebAppUrl();
+const char *apiToken();
 }
