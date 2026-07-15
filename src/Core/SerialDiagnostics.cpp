@@ -8,6 +8,7 @@
 #include "../HMI/HMIManager.h"
 #include "../Storage/OfflineQueue.h"
 #include <ESP8266WiFi.h>
+#include <LittleFS.h>
 
 namespace {
 bool gWifiKnown = false;
@@ -25,6 +26,17 @@ constexpr uint32_t kHealthIntervalMs = 60000UL;
 void divider() {
   Logger::info(F("================================================="));
 }
+
+void configStatus(const __FlashStringHelper *name, const char *value) {
+  Logger::info(String(F("[CHECK] ")) + String(name) + F(" ........ ") +
+               ((value && value[0]) ? F("OK") : F("MISSING")));
+}
+
+void fileStatus(const char *path, bool required) {
+  const bool exists = LittleFS.exists(path);
+  const String prefix = required ? F("[CHECK] Required file ") : F("[CHECK] Runtime file ");
+  Logger::info(prefix + path + F(" ........ ") + (exists ? F("PRESENT") : F("NOT FOUND")));
+}
 }
 
 void SerialDiagnostics::begin() {
@@ -33,6 +45,21 @@ void SerialDiagnostics::begin() {
   Logger::info(String(F("[CFG] Machine ID: ")) + Config::machineId());
   Logger::info(String(F("[CFG] Machine Name: ")) + Config::machineName());
   Logger::info(String(F("[CFG] WiFi SSID: ")) + Config::wifiSsid());
+
+  Logger::info(F("[CHECK] Startup configuration"));
+  configStatus(F("Machine ID"), Config::machineId());
+  configStatus(F("Machine Name"), Config::machineName());
+  configStatus(F("WiFi SSID"), Config::wifiSsid());
+  configStatus(F("WiFi Password"), Config::wifiPassword());
+  configStatus(F("Google Web App URL"), Config::googleWebAppUrl());
+  configStatus(F("Google API Token"), Config::apiToken());
+
+  Logger::info(F("[CHECK] LittleFS files"));
+  fileStatus("/machine.json", true);
+  fileStatus("/machine.json.bak", false);
+  fileStatus("/queue.dat", false);
+  fileStatus("/fault.log", false);
+
   Logger::info(Config::googleWebAppUrl()[0]
                    ? F("[GOOGLE] Web App URL configured")
                    : F("[GOOGLE] Web App URL missing"));
