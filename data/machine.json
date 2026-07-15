@@ -1,8 +1,8 @@
 {
   "machine_id": "MCH001",
   "machine_name": "PRESS-01",
-  "wifi_ssid": "YOUR_WIFI_SSID",
-  "wifi_password": "YOUR_WIFI_PASSWORD",
-  "google_web_app_url": "YOUR_GOOGLE_APPS_SCRIPT_WEB_APP_URL",
-  "api_token": "YOUR_AFMS_API_TOKEN"
+  "wifi_ssid": "Pradip",
+  "wifi_password": "12345679",
+  "google_web_app_url": "https://script.google.com/macros/s/AKfycbzVjpvtgm5lQYowhSuUo7cIA20FtVSA5ZEjPwsM5kf7uKpaPJ9YpCG3GntCzLg8K1Vk/exec",
+  "api_token": "AFMS-2026-Factory-Secret-8d92f1a7b3c4e5f6"
 }
