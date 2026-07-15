@@ -15,10 +15,12 @@ bool gReadyMessageSent = false;
 uint32_t gSuccess = 0;
 uint32_t gFailure = 0;
 uint32_t gLastVerifyAttemptMs = 0;
+uint32_t gLastMessageAttemptMs = 0;
 uint16_t gPendingLossCode = 0;
 uint32_t gPendingLossDurationSeconds = 0;
 String gPendingMonthlyReport;
 constexpr uint32_t kVerifyRetryMs = 60000UL;
+constexpr uint32_t kMessageRetryMs = 30000UL;
 char gBotToken[96] = "";
 char gChatId[32] = "";
 
@@ -68,13 +70,24 @@ bool request(const String &url, String *response = nullptr) {
   client.setInsecure();
   client.setTimeout(10000);
   HTTPClient http;
-  if (!http.begin(client, url)) return false;
+  if (!http.begin(client, url)) {
+    Logger::warn(F("[TELEGRAM] HTTP begin failed"));
+    return false;
+  }
   http.setTimeout(10000);
   http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
   const int code = http.GET();
   const String body = code > 0 ? http.getString() : String();
   http.end();
   if (response) *response = body;
+
+  Logger::info(String(F("[TELEGRAM] HTTP status: ")) + code);
+  if (body.length()) {
+    String preview = body;
+    if (preview.length() > 300) preview = preview.substring(0, 300) + F("...");
+    Logger::info(String(F("[TELEGRAM] Response: ")) + preview);
+  }
+
   return code >= 200 && code < 300 && body.indexOf(F("\"ok\":true")) >= 0;
 }
 
@@ -100,6 +113,7 @@ bool verifyBot() {
 
 bool sendText(const String &message) {
   if (!TelegramClient::configured() || !WiFiManager::connected()) return false;
+  gLastMessageAttemptMs = millis();
   String url = apiUrl(F("sendMessage"));
   url += F("?chat_id=");
   url += urlEncode(gChatId);
@@ -111,13 +125,14 @@ bool sendText(const String &message) {
     Logger::info(F("[TELEGRAM] Message sent"));
   } else {
     ++gFailure;
-    Logger::warn(F("[TELEGRAM] Message failed"));
+    Logger::warn(F("[TELEGRAM] Message failed; retry in 30 seconds"));
   }
   return ok;
 }
 
 bool sendDocument(const String &path) {
   if (!TelegramClient::configured() || !WiFiManager::connected()) return false;
+  gLastMessageAttemptMs = millis();
   File file = LittleFS.open(path, "r");
   if (!file) {
     Logger::warn(F("[TELEGRAM] CSV file not found"));
@@ -181,13 +196,19 @@ bool sendDocument(const String &path) {
   }
   client.stop();
 
+  if (response.length()) {
+    String preview = response;
+    if (preview.length() > 400) preview = preview.substring(preview.length() - 400);
+    Logger::info(String(F("[TELEGRAM] Document response: ")) + preview);
+  }
+
   const bool ok = response.indexOf(F(" 200 ")) >= 0 && response.indexOf(F("\"ok\":true")) >= 0;
   if (ok) {
     ++gSuccess;
     Logger::info(String(F("[TELEGRAM] Monthly CSV sent: ")) + filename);
   } else {
     ++gFailure;
-    Logger::warn(F("[TELEGRAM] Monthly CSV send failed"));
+    Logger::warn(F("[TELEGRAM] Monthly CSV send failed; retry in 30 seconds"));
   }
   return ok;
 }
@@ -197,6 +218,7 @@ void TelegramClient::begin() {
   gVerified = false;
   gVerificationAttempted = false;
   gReadyMessageSent = false;
+  gLastMessageAttemptMs = 0;
   gPendingLossCode = 0;
   gPendingLossDurationSeconds = 0;
   gPendingMonthlyReport = "";
@@ -213,9 +235,11 @@ void TelegramClient::update() {
     if (!gVerified) return;
   }
 
+  if (gLastMessageAttemptMs && millis() - gLastMessageAttemptMs < kMessageRetryMs) return;
+
   if (!gReadyMessageSent) {
     gReadyMessageSent = sendMachineReady();
-    if (!gReadyMessageSent) return;
+    return;
   }
 
   if (gPendingLossCode >= 1 && gPendingLossCode <= 16) {
