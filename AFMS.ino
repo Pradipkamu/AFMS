@@ -5,6 +5,7 @@
 #include "src/Core/SystemHealth.h"
 #include "src/Core/ReliabilityManager.h"
 #include "src/Core/SerialDiagnostics.h"
+#include "src/Core/HardwareConfig.h"
 #include "src/Storage/LittleFSManager.h"
 #include "src/Communication/WiFiManager.h"
 #include "src/Communication/CloudManager.h"
@@ -16,10 +17,10 @@
 #include "src/HMI/HMIManager.h"
 
 void setup() {
-  Serial.begin(115200);
+  Serial1.begin(HardwareConfig::DiagnosticBaud);
   delay(10);
 
-  Logger::begin(Serial);
+  Logger::begin(Serial1);
   Logger::info(F("Booting AFMS " AFMS_VERSION));
 
   if (!LittleFSManager::begin()) {
