@@ -12,6 +12,11 @@ uint8_t gFrame[128];
 uint8_t gLength = 0;
 uint32_t gLastByteUs = 0;
 
+// Holding-register offsets 0..15 are HMI command registers.
+// Offsets 16 and above are AFMS status registers and are read-only.
+constexpr uint16_t kWritableRegisterCount = 16;
+constexpr uint32_t kFrameGapUs = 4500UL;  // 3.5+ characters at fixed 9600 baud, 8N1.
+
 uint16_t crc16(const uint8_t *data, uint16_t length) {
   uint16_t crc = 0xFFFF;
   for (uint16_t i = 0; i < length; ++i) {
@@ -59,15 +64,21 @@ void processFrame() {
     }
     sendFrame(reply, static_cast<uint8_t>(3 + quantity * 2U));
   } else if (functionCode == 0x06) {
-    if (address >= gRegisterCount) { exception(functionCode, 0x02); return; }
+    if (address >= kWritableRegisterCount || address >= gRegisterCount) { exception(functionCode, 0x02); return; }
     gRegisters[address] = quantityOrValue;
     uint8_t reply[8];
     memcpy(reply, gFrame, 6);
     sendFrame(reply, 6);
   } else if (functionCode == 0x10) {
     const uint16_t quantity = quantityOrValue;
-    if (gLength < 9 || quantity == 0 || address + quantity > gRegisterCount || gFrame[6] != quantity * 2U) { exception(functionCode, 0x03); return; }
-    for (uint16_t i = 0; i < quantity; ++i) gRegisters[address + i] = static_cast<uint16_t>(gFrame[7 + i * 2] << 8U) | gFrame[8 + i * 2];
+    if (gLength < 9 || quantity == 0 || address + quantity > kWritableRegisterCount ||
+        address + quantity > gRegisterCount || gFrame[6] != quantity * 2U) {
+      exception(functionCode, 0x03);
+      return;
+    }
+    for (uint16_t i = 0; i < quantity; ++i) {
+      gRegisters[address + i] = static_cast<uint16_t>(gFrame[7 + i * 2] << 8U) | gFrame[8 + i * 2];
+    }
     uint8_t reply[8] = {gSlaveId, functionCode, gFrame[2], gFrame[3], gFrame[4], gFrame[5], 0, 0};
     sendFrame(reply, 6);
   } else {
@@ -94,7 +105,7 @@ void ModbusSlave::update() {
     if (value >= 0 && gLength < sizeof(gFrame)) gFrame[gLength++] = static_cast<uint8_t>(value);
     gLastByteUs = micros();
   }
-  if (gLength > 0 && static_cast<uint32_t>(micros() - gLastByteUs) > 4500UL) {
+  if (gLength > 0 && static_cast<uint32_t>(micros() - gLastByteUs) > kFrameGapUs) {
     processFrame();
     gLength = 0;
   }
