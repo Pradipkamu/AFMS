@@ -9,6 +9,7 @@
 #include "../Core/Logger.h"
 #include "../Core/HardwareConfig.h"
 #include "../Core/PulseConfig.h"
+#include "../Core/Config.h"
 #include "../Communication/TelegramClient.h"
 
 namespace {
@@ -29,7 +30,7 @@ void MachineEngine::begin() {
   RejectManager::begin(HardwareConfig::RejectInputPin,
                        PulseConfig::rejectDebounceMs() * 1000UL);
   CycleManager::begin(HardwareConfig::DefaultCycleTimeMs);
-  IdleManager::begin(HardwareConfig::DefaultIdleDelayMs);
+  IdleManager::begin(Config::lossAlarmDelaySeconds() * 1000UL);
   AlarmManager::begin(HardwareConfig::AlarmOutputPin, true);
   OEEManager::begin(HardwareConfig::DefaultCycleTimeMs);
 
@@ -37,6 +38,8 @@ void MachineEngine::begin() {
   gReady = true;
   gHasProductionPulse = false;
   EventBus::publish(EventType::MachineReady);
+  Logger::info(String(F("[LOSS] Capture alarm activates after ")) +
+               Config::lossAlarmDelaySeconds() + F(" idle seconds"));
   Logger::info(F("Machine engine ready"));
 }
 
