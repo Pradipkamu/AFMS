@@ -1,0 +1,14 @@
+{
+  "artifact": "DOP107CV_Test_X68.dpa",
+  "source_template": "DOP107CV_Base.dop.dpa",
+  "generator": "tools/dop107cv_generator/rewrite_geometry.py",
+  "geometry": {
+    "x": 68,
+    "y": 78,
+    "width": 87,
+    "height": 84
+  },
+  "expected_size_bytes": 68939,
+  "sha256": "c8ac7c34c2ff7c2fce48b57de83c7eaac39e9e0151bee8fa83078a84918dc754",
+  "status": "experimental-dopsoft-open-test"
+}
