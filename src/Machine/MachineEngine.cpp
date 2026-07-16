@@ -27,6 +27,7 @@ void MachineEngine::begin() {
   PulseConfig::load();
   ProductionManager::begin(HardwareConfig::ProductionInputPin,
                            PulseConfig::productionDebounceMs() * 1000UL);
+  ProductionManager::setEnabled(true);
   RejectManager::begin(HardwareConfig::RejectInputPin,
                        PulseConfig::rejectDebounceMs() * 1000UL);
   CycleManager::begin(HardwareConfig::DefaultCycleTimeMs);
@@ -77,7 +78,11 @@ void MachineEngine::update() {
   gWasIdle = idleNow;
 
   if (gHasProductionPulse && IdleManager::alarmDue()) {
-    AlarmManager::set(true);
+    if (!AlarmManager::active()) {
+      AlarmManager::set(true);
+      ProductionManager::setEnabled(false);
+      Logger::warn(F("[LOSS] Production counting blocked until loss is acknowledged"));
+    }
     gState = MachineState::LossRequired;
   }
 
@@ -121,10 +126,12 @@ bool MachineEngine::acknowledgeLossCode(uint16_t lossCode) {
   OEEManager::recordLoss(lossCode, duration);
   EventBus::publish(EventType::LossSelected, lossCode, duration);
   AlarmManager::clear();
+  ProductionManager::setEnabled(true);
   gState = IdleManager::idle() ? MachineState::Idle : MachineState::Running;
   gLastAcceptedLossCode = lossCode;
   gLastLossDurationSeconds = duration;
   TelegramClient::queueLoss(lossCode, duration);
+  Logger::info(F("[LOSS] Production counting enabled after loss acknowledgement"));
   return true;
 }
 
