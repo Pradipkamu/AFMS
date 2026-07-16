@@ -25,6 +25,7 @@ uint16_t gLastCycleSeconds = 0, gLastTargetQuantity = 0, gLastShift = 0, gLastOp
 uint16_t gLastHmiHeartbeat = 0, gHeartbeat = 0;
 uint32_t gLastHmiHeartbeatMs = 0, gLastPartNumber = 0, gLastSyncMs = 0;
 char gLastPartName[17] = "";
+bool gLastAlarmActive = false;
 
 void write32(uint16_t lowRegister, uint32_t value) {
   gRegisters[lowRegister] = static_cast<uint16_t>(value & 0xFFFFU);
@@ -34,6 +35,17 @@ void write32(uint16_t lowRegister, uint32_t value) {
 uint32_t read32(uint16_t lowRegister) {
   return static_cast<uint32_t>(gRegisters[lowRegister]) |
          (static_cast<uint32_t>(gRegisters[lowRegister + 1]) << 16U);
+}
+
+void writePartNameCommand(const char *source) {
+  const char *text = source ? source : "";
+  for (uint16_t i = 0; i < HMIRegister::CommandPartNameRegisters; ++i) {
+    const size_t pos = static_cast<size_t>(i) * 2U;
+    const uint8_t high = text[pos] ? static_cast<uint8_t>(text[pos]) : 0;
+    const uint8_t low = (high && text[pos + 1]) ? static_cast<uint8_t>(text[pos + 1]) : 0;
+    gRegisters[HMIRegister::CommandPartNameStart + i] =
+        static_cast<uint16_t>((static_cast<uint16_t>(high) << 8U) | low);
+  }
 }
 
 void readPartName(char *destination, size_t size) {
@@ -64,8 +76,8 @@ uint32_t shiftDurationSeconds(uint16_t shiftId) {
 }
 
 uint32_t adjustedTarget(uint32_t originalTarget,
-                        uint16_t shiftId,
-                        uint32_t plannedShutdownSeconds) {
+                         uint16_t shiftId,
+                         uint32_t plannedShutdownSeconds) {
   const uint32_t shiftSeconds = shiftDurationSeconds(shiftId);
   if (originalTarget == 0 || shiftSeconds == 0) return originalTarget;
   const uint32_t productiveSeconds = plannedShutdownSeconds < shiftSeconds
@@ -77,19 +89,19 @@ uint32_t adjustedTarget(uint32_t originalTarget,
 
 uint16_t consumeLossCommand() {
   uint16_t selectedCode = 0;
-
-  // Coils 0..15 are the preferred DOPSoft loss buttons. Consume every asserted
-  // coil so a stale second press cannot be processed after the alarm clears.
+  uint8_t assertedCount = 0;
   for (uint16_t coil = 0; coil < 16; ++coil) {
-    if (ModbusSlave::consumeCoil(coil) && selectedCode == 0) {
-      selectedCode = static_cast<uint16_t>(coil + 1U);
+    if (ModbusSlave::consumeCoil(coil)) {
+      ++assertedCount;
+      if (selectedCode == 0) selectedCode = static_cast<uint16_t>(coil + 1U);
     }
   }
-
-  // Retain both holding-register command paths for backward compatibility.
+  if (assertedCount > 1) {
+    gRegisters[HMIRegister::StatusLossCommandResult] = 4;
+    return 0;
+  }
   if (selectedCode == 0) selectedCode = gRegisters[HMIRegister::CommandLossCode];
   if (selectedCode == 0) selectedCode = gRegisters[HMIRegister::CommandLossCodeAlias];
-
   gRegisters[HMIRegister::CommandLossCode] = 0;
   gRegisters[HMIRegister::CommandLossCodeAlias] = 0;
   return selectedCode;
@@ -99,8 +111,23 @@ uint16_t consumeLossCommand() {
 void HMIManager::begin() {
   RS485Driver::begin(HardwareConfig::Rs485DirectionPin, HardwareConfig::Rs485Baud);
   ModbusSlave::begin(HardwareConfig::ModbusSlaveId, gRegisters, HMIRegister::RegisterCount);
-  gRegisters[HMIRegister::CommandCycleTimeSeconds] = static_cast<uint16_t>(CycleManager::cycleTimeMs() / 1000UL);
-  gRegisters[HMIRegister::CommandShift] = 1;
+
+  const ShiftSnapshot shift = ShiftManager::snapshot();
+  const uint16_t cycleSeconds = static_cast<uint16_t>(CycleManager::cycleTimeMs() / 1000UL);
+  gRegisters[HMIRegister::CommandCycleTimeSeconds] = cycleSeconds;
+  gRegisters[HMIRegister::CommandTargetQuantity] = clamp16(shift.targetQuantity);
+  gRegisters[HMIRegister::CommandOperatorId] = clamp16(shift.operatorId);
+  gRegisters[HMIRegister::CommandShift] = shift.shiftId;
+  write32(HMIRegister::CommandPartNumberLow, shift.partNumber);
+  writePartNameCommand(shift.partName);
+
+  gLastCycleSeconds = cycleSeconds;
+  gLastTargetQuantity = gRegisters[HMIRegister::CommandTargetQuantity];
+  gLastOperatorId = gRegisters[HMIRegister::CommandOperatorId];
+  gLastShift = shift.shiftId;
+  gLastPartNumber = shift.partNumber;
+  strlcpy(gLastPartName, shift.partName, sizeof(gLastPartName));
+  gLastAlarmActive = MachineEngine::snapshot().alarmActive;
   gLastHmiHeartbeatMs = millis();
   Logger::info(F("Delta HMI Modbus RTU hardware UART ready"));
   Logger::info(F("[LOSS] HMI coils 00001-00016 mapped to Loss 1-16"));
@@ -173,6 +200,11 @@ void HMIManager::update() {
   const ShiftSnapshot shiftData = ShiftManager::snapshot();
   const OEESnapshot oee = OEEManager::snapshot();
 
+  if (machine.alarmActive && !gLastAlarmActive) {
+    gRegisters[HMIRegister::StatusLossCommandResult] = 0;
+  }
+  gLastAlarmActive = machine.alarmActive;
+
   gRegisters[HMIRegister::StatusMachineState] = static_cast<uint16_t>(machine.state);
   write32(HMIRegister::StatusProductionLow, machine.totalParts);
   write32(HMIRegister::StatusRejectLow, machine.rejectParts);
@@ -187,10 +219,6 @@ void HMIManager::update() {
   gRegisters[HMIRegister::StatusPerformancePermille] = machine.performancePermille;
   gRegisters[HMIRegister::StatusQualityPermille] = machine.qualityPermille;
   gRegisters[HMIRegister::StatusOeePermille] = machine.oeePermille;
-
-  // The original production target belongs to the active shift. Do not source
-  // this register from the OEE snapshot, because it can lag during restore or
-  // initialization.
   write32(HMIRegister::StatusTargetQuantityLow, shiftData.targetQuantity);
   gRegisters[HMIRegister::StatusShift] = shiftData.shiftId;
   write32(HMIRegister::StatusOperatorIdLow, shiftData.operatorId);
@@ -241,8 +269,8 @@ void HMIManager::update() {
   write32(HMIRegister::StatusLastLossDurationLow, MachineEngine::lastLossDurationSeconds());
 
   const uint32_t reducedTarget = adjustedTarget(shiftData.targetQuantity,
-                                                shiftData.shiftId,
-                                                oee.plannedShutdownSeconds);
+                                                 shiftData.shiftId,
+                                                 oee.plannedShutdownSeconds);
   const uint32_t reducedRemaining = reducedTarget > shiftData.production
       ? reducedTarget - shiftData.production
       : 0;
