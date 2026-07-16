@@ -7,6 +7,7 @@
 #include "../Communication/TelegramClient.h"
 #include "../Communication/TimeManager.h"
 #include "../Storage/OfflineQueue.h"
+#include "../Storage/RuntimeStateManager.h"
 #include "../Machine/MachineEngine.h"
 #include "../Machine/CycleManager.h"
 #include "../Machine/OEEManager.h"
@@ -19,27 +20,19 @@
 
 namespace {
 uint16_t gRegisters[HMIRegister::RegisterCount] = {0};
-uint16_t gLastCycleSeconds = 0;
-uint16_t gLastTargetQuantity = 0;
-uint16_t gLastShift = 0;
-uint16_t gLastOperatorId = 0;
-uint16_t gLastHmiHeartbeat = 0;
-uint32_t gLastHmiHeartbeatMs = 0;
-uint32_t gLastPartNumber = 0;
+uint16_t gLastCycleSeconds = 0, gLastTargetQuantity = 0, gLastShift = 0, gLastOperatorId = 0;
+uint16_t gLastHmiHeartbeat = 0, gHeartbeat = 0;
+uint32_t gLastHmiHeartbeatMs = 0, gLastPartNumber = 0, gLastSyncMs = 0;
 char gLastPartName[17] = "";
-uint32_t gLastSyncMs = 0;
-uint16_t gHeartbeat = 0;
 
 void write32(uint16_t lowRegister, uint32_t value) {
   gRegisters[lowRegister] = static_cast<uint16_t>(value & 0xFFFFU);
   gRegisters[lowRegister + 1] = static_cast<uint16_t>(value >> 16U);
 }
-
 uint32_t read32(uint16_t lowRegister) {
   return static_cast<uint32_t>(gRegisters[lowRegister]) |
          (static_cast<uint32_t>(gRegisters[lowRegister + 1]) << 16U);
 }
-
 void readPartName(char *destination, size_t size) {
   if (!destination || size == 0) return;
   size_t position = 0;
@@ -54,17 +47,12 @@ void readPartName(char *destination, size_t size) {
   }
   destination[position] = '\0';
 }
-
-uint16_t clamp16(uint32_t value) {
-  return value > 0xFFFFUL ? 0xFFFFU : static_cast<uint16_t>(value);
-}
+uint16_t clamp16(uint32_t value) { return value > 0xFFFFUL ? 0xFFFFU : static_cast<uint16_t>(value); }
 }
 
 void HMIManager::begin() {
   RS485Driver::begin(HardwareConfig::Rs485DirectionPin, HardwareConfig::Rs485Baud);
-  ModbusSlave::begin(HardwareConfig::ModbusSlaveId,
-                     gRegisters,
-                     HMIRegister::RegisterCount);
+  ModbusSlave::begin(HardwareConfig::ModbusSlaveId, gRegisters, HMIRegister::RegisterCount);
   gRegisters[HMIRegister::CommandCycleTimeSeconds] = static_cast<uint16_t>(CycleManager::cycleTimeMs() / 1000UL);
   gRegisters[HMIRegister::CommandShift] = 1;
   gLastHmiHeartbeatMs = millis();
@@ -73,11 +61,14 @@ void HMIManager::begin() {
 
 void HMIManager::update() {
   ModbusSlave::update();
+  bool criticalChange = false;
 
   const uint16_t lossCode = gRegisters[HMIRegister::CommandLossCode];
   if (lossCode != 0) {
-    MachineEngine::acknowledgeLossCode(lossCode);
+    const bool accepted = MachineEngine::acknowledgeLossCode(lossCode);
+    gRegisters[HMIRegister::StatusLossCommandResult] = accepted ? 1 : 2;
     gRegisters[HMIRegister::CommandLossCode] = 0;
+    criticalChange |= accepted;
   }
 
   const uint16_t cycleSeconds = gRegisters[HMIRegister::CommandCycleTimeSeconds];
@@ -86,24 +77,28 @@ void HMIManager::update() {
     CycleManager::setCycleTimeMs(cycleMs);
     OEEManager::setIdealCycleTimeMs(cycleMs);
     gLastCycleSeconds = cycleSeconds;
+    criticalChange = true;
   }
 
   const uint16_t targetQuantity = gRegisters[HMIRegister::CommandTargetQuantity];
   if (targetQuantity != gLastTargetQuantity) {
     ShiftManager::setTargetQuantity(targetQuantity);
     gLastTargetQuantity = targetQuantity;
+    criticalChange = true;
   }
 
   const uint16_t shift = gRegisters[HMIRegister::CommandShift];
   if (shift >= 1 && shift <= 3 && shift != gLastShift) {
     ShiftManager::setShift(shift);
     gLastShift = shift;
+    criticalChange = true;
   }
 
   const uint16_t operatorId = gRegisters[HMIRegister::CommandOperatorId];
   if (operatorId != gLastOperatorId) {
     ShiftManager::setOperatorId(operatorId);
     gLastOperatorId = operatorId;
+    criticalChange = true;
   }
 
   const uint16_t hmiHeartbeat = gRegisters[HMIRegister::CommandHeartbeat];
@@ -120,14 +115,16 @@ void HMIManager::update() {
     gLastPartNumber = partNumber;
     strncpy(gLastPartName, partName, sizeof(gLastPartName) - 1);
     gLastPartName[sizeof(gLastPartName) - 1] = '\0';
+    criticalChange = true;
   }
+  if (criticalChange) RuntimeStateManager::saveNow();
 
   if (millis() - gLastSyncMs < 250UL) return;
   gLastSyncMs = millis();
-
   const MachineSnapshot machine = MachineEngine::snapshot();
   const ShiftSnapshot shiftData = ShiftManager::snapshot();
   const OEESnapshot oee = OEEManager::snapshot();
+
   gRegisters[HMIRegister::StatusMachineState] = static_cast<uint16_t>(machine.state);
   write32(HMIRegister::StatusProductionLow, machine.totalParts);
   write32(HMIRegister::StatusRejectLow, machine.rejectParts);
@@ -149,10 +146,7 @@ void HMIManager::update() {
   write32(HMIRegister::StatusShiftProductionLow, shiftData.production);
   write32(HMIRegister::StatusShiftRejectLow, shiftData.reject);
   write32(HMIRegister::StatusShiftGoodLow, shiftData.good);
-  const uint32_t remaining = shiftData.targetQuantity > shiftData.production
-                                 ? shiftData.targetQuantity - shiftData.production
-                                 : 0;
-  write32(HMIRegister::StatusTargetRemainingLow, remaining);
+  write32(HMIRegister::StatusTargetRemainingLow, shiftData.targetQuantity > shiftData.production ? shiftData.targetQuantity - shiftData.production : 0);
 
   gRegisters[HMIRegister::StatusWifiConnected] = WiFiManager::connected() ? 1 : 0;
   gRegisters[HMIRegister::StatusGoogleConnected] = CloudManager::uploadSuccessCount() > 0 ? 1 : 0;
@@ -163,11 +157,8 @@ void HMIManager::update() {
   write32(HMIRegister::StatusTelegramSuccessLow, TelegramClient::successCount());
   write32(HMIRegister::StatusTelegramFailureLow, TelegramClient::failureCount());
   gRegisters[HMIRegister::StatusModbusErrorCount] = static_cast<uint16_t>(ModbusSlave::errorCount() & 0xFFFFU);
-
   write32(HMIRegister::StatusModbusRequestLow, ModbusSlave::requestCount());
-  gRegisters[HMIRegister::StatusWifiRssi] = WiFiManager::connected()
-      ? static_cast<uint16_t>(static_cast<int16_t>(WiFi.RSSI()))
-      : 0;
+  gRegisters[HMIRegister::StatusWifiRssi] = WiFiManager::connected() ? static_cast<uint16_t>(static_cast<int16_t>(WiFi.RSSI())) : 0;
   gRegisters[HMIRegister::StatusTimeSynchronized] = TimeManager::synchronized() ? 1 : 0;
 
   const time_t now = TimeManager::now();
@@ -180,18 +171,16 @@ void HMIManager::update() {
     gRegisters[HMIRegister::StatusMinute] = static_cast<uint16_t>(localTime.tm_min);
     gRegisters[HMIRegister::StatusSecond] = static_cast<uint16_t>(localTime.tm_sec);
   }
-
   gRegisters[HMIRegister::StatusCycleTimeSeconds] = static_cast<uint16_t>(CycleManager::cycleTimeMs() / 1000UL);
   gRegisters[HMIRegister::StatusHmiHeartbeatEcho] = gLastHmiHeartbeat;
   gRegisters[HMIRegister::StatusHmiHeartbeatAgeSeconds] = clamp16((millis() - gLastHmiHeartbeatMs) / 1000UL);
   const uint32_t lastRequestMs = ModbusSlave::lastRequestMs();
-  gRegisters[HMIRegister::StatusLastModbusAgeMs] = lastRequestMs == 0
-      ? 0xFFFFU
-      : clamp16(millis() - lastRequestMs);
-
+  gRegisters[HMIRegister::StatusLastModbusAgeMs] = lastRequestMs == 0 ? 0xFFFFU : clamp16(millis() - lastRequestMs);
   write32(HMIRegister::StatusScheduledShiftElapsedLow, oee.scheduledShiftElapsedSeconds);
   write32(HMIRegister::StatusPlannedShutdownLow, oee.plannedShutdownSeconds);
   write32(HMIRegister::StatusPlannedProductionLow, oee.plannedSeconds);
+  gRegisters[HMIRegister::StatusLastLossCode] = MachineEngine::lastAcceptedLossCode();
+  write32(HMIRegister::StatusLastLossDurationLow, MachineEngine::lastLossDurationSeconds());
 }
 
 bool HMIManager::connected() { return ModbusSlave::connected(); }
