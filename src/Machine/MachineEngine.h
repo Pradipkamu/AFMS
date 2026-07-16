@@ -9,4 +9,5 @@ MachineSnapshot snapshot();
 bool acknowledgeLossCode(uint16_t lossCode);
 uint16_t lastAcceptedLossCode();
 uint32_t lastLossDurationSeconds();
+void restoreLastLoss(uint16_t lossCode, uint32_t durationSeconds);
 }
