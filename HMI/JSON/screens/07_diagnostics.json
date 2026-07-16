@@ -1,0 +1,40 @@
+{
+  "screen": {
+    "number": 7,
+    "name": "Diagnostics",
+    "title": "AFMS DIAGNOSTICS",
+    "resolution": {"width": 800, "height": 480},
+    "background": "#101820",
+    "refresh_ms": 250,
+    "objects": [
+      {"id":"title","type":"text","x":18,"y":8,"width":360,"height":36,"text":"COMMUNICATION DIAGNOSTICS","font_size":24,"foreground":"#FFFFFF"},
+      {"id":"modbus_requests_label","type":"text","x":30,"y":72,"width":250,"height":30,"text":"MODBUS REQUESTS","font_size":19,"foreground":"#BFC9D4"},
+      {"id":"modbus_requests_value","type":"numeric_display_32","x":300,"y":66,"width":180,"height":42,"tag_low":"StatusModbusRequestLow","tag_high":"StatusModbusRequestHigh","register_low":64,"register_high":65,"font_size":26,"align":"right"},
+      {"id":"modbus_errors_label","type":"text","x":30,"y":126,"width":250,"height":30,"text":"MODBUS ERRORS","font_size":19,"foreground":"#BFC9D4"},
+      {"id":"modbus_errors_value","type":"numeric_display","x":300,"y":120,"width":180,"height":42,"tag":"StatusModbusErrorCount","register":63,"font_size":26,"align":"right"},
+      {"id":"last_modbus_label","type":"text","x":30,"y":180,"width":250,"height":30,"text":"LAST REQUEST AGE","font_size":19,"foreground":"#BFC9D4"},
+      {"id":"last_modbus_value","type":"numeric_display","x":300,"y":174,"width":180,"height":42,"tag":"StatusLastModbusAgeMs","register":77,"suffix":" ms","font_size":26,"align":"right"},
+      {"id":"hmi_age_label","type":"text","x":30,"y":234,"width":250,"height":30,"text":"HMI HEARTBEAT AGE","font_size":19,"foreground":"#BFC9D4"},
+      {"id":"hmi_age_value","type":"numeric_display","x":300,"y":228,"width":180,"height":42,"tag":"StatusHmiHeartbeatAgeSeconds","register":76,"suffix":" s","font_size":26,"align":"right"},
+      {"id":"heartbeat_echo_label","type":"text","x":30,"y":288,"width":250,"height":30,"text":"HEARTBEAT ECHO","font_size":19,"foreground":"#BFC9D4"},
+      {"id":"heartbeat_echo_value","type":"numeric_display","x":300,"y":282,"width":180,"height":42,"tag":"StatusHmiHeartbeatEcho","register":75,"font_size":26,"align":"right"},
+      {"id":"status_panel","type":"panel","x":520,"y":66,"width":252,"height":258,"fill":"#1F2A33","border":"#3A506B"},
+      {"id":"comm_label","type":"text","x":540,"y":84,"width":148,"height":30,"text":"RS-485","font_size":20,"foreground":"#BFC9D4"},
+      {"id":"comm_lamp","type":"word_state_lamp","x":704,"y":80,"width":44,"height":36,"tag":"StatusCommunication","register":26,"states":{"0":"#D62828","1":"#2A9D8F"}},
+      {"id":"wifi_label","type":"text","x":540,"y":132,"width":148,"height":30,"text":"WI-FI","font_size":20,"foreground":"#BFC9D4"},
+      {"id":"wifi_lamp","type":"word_state_lamp","x":704,"y":128,"width":44,"height":36,"tag":"StatusWifiConnected","register":51,"states":{"0":"#D62828","1":"#2A9D8F"}},
+      {"id":"rssi_label","type":"text","x":540,"y":180,"width":148,"height":30,"text":"RSSI","font_size":20,"foreground":"#BFC9D4"},
+      {"id":"rssi_value","type":"numeric_display","x":674,"y":174,"width":74,"height":40,"tag":"StatusWifiRssi","register":66,"signed":true,"font_size":23,"align":"right"},
+      {"id":"time_sync_label","type":"text","x":540,"y":228,"width":148,"height":30,"text":"TIME SYNC","font_size":20,"foreground":"#BFC9D4"},
+      {"id":"time_sync_lamp","type":"word_state_lamp","x":704,"y":224,"width":44,"height":36,"tag":"StatusTimeSynchronized","register":67,"states":{"0":"#D62828","1":"#2A9D8F"}},
+      {"id":"cycle_label","type":"text","x":540,"y":276,"width":148,"height":30,"text":"CYCLE TIME","font_size":20,"foreground":"#BFC9D4"},
+      {"id":"cycle_value","type":"numeric_display","x":674,"y":270,"width":74,"height":40,"tag":"StatusCycleTimeSeconds","register":74,"font_size":23,"align":"right"},
+      {"id":"nav_dashboard","type":"screen_change_button","x":18,"y":386,"width":112,"height":70,"text":"DASHBOARD","target_screen":1},
+      {"id":"nav_production","type":"screen_change_button","x":140,"y":386,"width":118,"height":70,"text":"PRODUCTION","target_screen":2},
+      {"id":"nav_oee","type":"screen_change_button","x":268,"y":386,"width":94,"height":70,"text":"OEE","target_screen":3},
+      {"id":"nav_shift","type":"screen_change_button","x":372,"y":386,"width":106,"height":70,"text":"SHIFT","target_screen":4},
+      {"id":"nav_connectivity","type":"screen_change_button","x":488,"y":386,"width":138,"height":70,"text":"CONNECT","target_screen":6},
+      {"id":"nav_system","type":"screen_change_button","x":636,"y":386,"width":146,"height":70,"text":"SYSTEM","target_screen":8}
+    ]
+  }
+}
