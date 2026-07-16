@@ -10,9 +10,8 @@ constexpr uint16_t CommandShift = 4;
 constexpr uint16_t CommandHeartbeat = 5;
 constexpr uint16_t CommandPartNumberLow = 6;
 constexpr uint16_t CommandPartNumberHigh = 7;
-constexpr uint16_t CommandPartNameStart = 8;   // 8 registers, 16 ASCII characters
+constexpr uint16_t CommandPartNameStart = 8;
 constexpr uint16_t CommandPartNameRegisters = 8;
-
 constexpr uint16_t StatusMachineState = 16;
 constexpr uint16_t StatusProductionLow = 17;
 constexpr uint16_t StatusProductionHigh = 18;
@@ -61,12 +60,10 @@ constexpr uint16_t StatusTelegramSuccessHigh = 60;
 constexpr uint16_t StatusTelegramFailureLow = 61;
 constexpr uint16_t StatusTelegramFailureHigh = 62;
 constexpr uint16_t StatusModbusErrorCount = 63;
-
-// Commit 0022 additions. Existing addresses above remain frozen.
 constexpr uint16_t StatusModbusRequestLow = 64;
 constexpr uint16_t StatusModbusRequestHigh = 65;
-constexpr uint16_t StatusWifiRssi = 66;              // signed dBm stored as INT16
-constexpr uint16_t StatusTimeSynchronized = 67;      // 0/1
+constexpr uint16_t StatusWifiRssi = 66;
+constexpr uint16_t StatusTimeSynchronized = 67;
 constexpr uint16_t StatusYear = 68;
 constexpr uint16_t StatusMonth = 69;
 constexpr uint16_t StatusDay = 70;
@@ -77,14 +74,15 @@ constexpr uint16_t StatusCycleTimeSeconds = 74;
 constexpr uint16_t StatusHmiHeartbeatEcho = 75;
 constexpr uint16_t StatusHmiHeartbeatAgeSeconds = 76;
 constexpr uint16_t StatusLastModbusAgeMs = 77;
-
-// Schedule-based OEE timing. All values are UINT32 seconds, low word first.
 constexpr uint16_t StatusScheduledShiftElapsedLow = 80;
 constexpr uint16_t StatusScheduledShiftElapsedHigh = 81;
 constexpr uint16_t StatusPlannedShutdownLow = 82;
 constexpr uint16_t StatusPlannedShutdownHigh = 83;
 constexpr uint16_t StatusPlannedProductionLow = 84;
 constexpr uint16_t StatusPlannedProductionHigh = 85;
-
-constexpr uint16_t RegisterCount = 86;
+constexpr uint16_t StatusLastLossCode = 86;
+constexpr uint16_t StatusLastLossDurationLow = 87;
+constexpr uint16_t StatusLastLossDurationHigh = 88;
+constexpr uint16_t StatusLossCommandResult = 89; // 0 none, 1 accepted, 2 rejected
+constexpr uint16_t RegisterCount = 90;
 }
