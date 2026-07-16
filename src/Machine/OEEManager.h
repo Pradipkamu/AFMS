@@ -3,6 +3,7 @@
 
 struct OEESnapshot {
   uint32_t plannedSeconds;
+  uint32_t plannedShutdownSeconds;
   uint32_t runSeconds;
   uint32_t downtimeSeconds;
   uint32_t targetQuantity;
