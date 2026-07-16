@@ -2,6 +2,7 @@
 #include <Arduino.h>
 
 struct OEESnapshot {
+  uint32_t scheduledShiftElapsedSeconds;
   uint32_t plannedSeconds;
   uint32_t plannedShutdownSeconds;
   uint32_t runSeconds;
@@ -18,6 +19,7 @@ void begin(uint32_t idealCycleTimeMs);
 void update(bool downtime, uint32_t totalParts, uint32_t rejectParts);
 void setIdealCycleTimeMs(uint32_t idealCycleTimeMs);
 void setTargetQuantity(uint32_t targetQuantity);
+void setScheduledShiftElapsedSeconds(uint32_t elapsedSeconds);
 void recordLoss(uint16_t lossCode, uint32_t durationSeconds);
 OEESnapshot snapshot();
 uint32_t lossSeconds(uint16_t lossCode);
