@@ -44,7 +44,7 @@ void MachineEngine::begin() {
   RejectManager::setEnabled(true);
   CycleManager::begin(HardwareConfig::DefaultCycleTimeMs);
   IdleManager::begin(Config::lossAlarmDelaySeconds() * 1000UL);
-  AlarmManager::begin(HardwareConfig::AlarmOutputPin, true);
+  AlarmManager::begin(HardwareConfig::AlarmOutputPin, Config::alarmActiveHigh());
   OEEManager::begin(HardwareConfig::DefaultCycleTimeMs);
 
   gState = MachineState::Ready;
