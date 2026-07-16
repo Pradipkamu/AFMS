@@ -13,10 +13,13 @@
 
 namespace {
 bool gReady = false;
+bool gHasProductionPulse = false;
 MachineState gState = MachineState::Ready;
 bool gWasIdle = false;
 bool gWasAlarmActive = false;
 uint32_t gLossStartIdleSeconds = 0;
+uint16_t gLastAcceptedLossCode = 0;
+uint32_t gLastLossDurationSeconds = 0;
 }
 
 void MachineEngine::begin() {
@@ -32,6 +35,7 @@ void MachineEngine::begin() {
 
   gState = MachineState::Ready;
   gReady = true;
+  gHasProductionPulse = false;
   EventBus::publish(EventType::MachineReady);
   Logger::info(F("Machine engine ready"));
 }
@@ -40,6 +44,7 @@ void MachineEngine::update() {
   const uint32_t nowMs = millis();
 
   while (ProductionManager::consumePulse()) {
+    gHasProductionPulse = true;
     CycleManager::onProduction(nowMs);
     IdleManager::onProduction();
     if (!AlarmManager::active()) gState = MachineState::Running;
@@ -50,14 +55,17 @@ void MachineEngine::update() {
     EventBus::publish(EventType::RejectPulse, static_cast<int32_t>(RejectManager::total()));
   }
 
-  IdleManager::update(
-      CycleManager::cycleExpired(nowMs),
-      nowMs,
-      CycleManager::lastProductionMs(),
-      CycleManager::cycleTimeMs());
+  if (gHasProductionPulse) {
+    IdleManager::update(
+        CycleManager::cycleExpired(nowMs),
+        nowMs,
+        CycleManager::lastProductionMs(),
+        CycleManager::cycleTimeMs());
+  }
 
-  const bool idleNow = IdleManager::idle();
+  const bool idleNow = gHasProductionPulse && IdleManager::idle();
   if (idleNow && !gWasIdle) {
+    gLossStartIdleSeconds = IdleManager::idleSeconds();
     gState = MachineState::Idle;
     EventBus::publish(EventType::IdleStarted);
   } else if (!idleNow && gWasIdle) {
@@ -65,20 +73,18 @@ void MachineEngine::update() {
   }
   gWasIdle = idleNow;
 
-  if (IdleManager::alarmDue()) {
+  if (gHasProductionPulse && IdleManager::alarmDue()) {
     AlarmManager::set(true);
     gState = MachineState::LossRequired;
   }
 
   const bool alarmNow = AlarmManager::active();
-  if (alarmNow && !gWasAlarmActive) {
-    gLossStartIdleSeconds = IdleManager::idleSeconds();
-    EventBus::publish(EventType::AlarmActivated);
-  }
+  if (alarmNow && !gWasAlarmActive) EventBus::publish(EventType::AlarmActivated);
   if (!alarmNow && gWasAlarmActive) EventBus::publish(EventType::AlarmCleared);
   gWasAlarmActive = alarmNow;
 
-  OEEManager::update(idleNow || alarmNow, ProductionManager::total(), RejectManager::total());
+  const bool oeeDowntime = !gHasProductionPulse || idleNow || alarmNow;
+  OEEManager::update(oeeDowntime, ProductionManager::total(), RejectManager::total());
 }
 
 bool MachineEngine::ready() { return gReady; }
@@ -105,13 +111,19 @@ MachineSnapshot MachineEngine::snapshot() {
   return value;
 }
 
-void MachineEngine::acknowledgeLossCode(uint16_t lossCode) {
-  if (lossCode == 0 || lossCode > 16 || !AlarmManager::active()) return;
+bool MachineEngine::acknowledgeLossCode(uint16_t lossCode) {
+  if (lossCode == 0 || lossCode > 16 || !AlarmManager::active()) return false;
   const uint32_t idleNow = IdleManager::idleSeconds();
   const uint32_t duration = idleNow >= gLossStartIdleSeconds ? idleNow - gLossStartIdleSeconds : 0;
   OEEManager::recordLoss(lossCode, duration);
   EventBus::publish(EventType::LossSelected, lossCode, duration);
   AlarmManager::clear();
   gState = IdleManager::idle() ? MachineState::Idle : MachineState::Running;
+  gLastAcceptedLossCode = lossCode;
+  gLastLossDurationSeconds = duration;
   TelegramClient::queueLoss(lossCode, duration);
+  return true;
 }
+
+uint16_t MachineEngine::lastAcceptedLossCode() { return gLastAcceptedLossCode; }
+uint32_t MachineEngine::lastLossDurationSeconds() { return gLastLossDurationSeconds; }
