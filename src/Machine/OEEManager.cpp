@@ -2,17 +2,17 @@
 
 namespace {
 constexpr uint16_t kPlannedShutdownLossCode = 1;
-
 uint32_t gLastUpdateMs = 0;
 uint32_t gMeasuredElapsedMs = 0;
 uint32_t gScheduledElapsedMs = 0;
 uint32_t gPlannedShutdownMs = 0;
-uint32_t gRunMs = 0;
 uint32_t gDowntimeMs = 0;
 uint32_t gIdealCycleTimeMs = 1000;
 uint32_t gTargetQuantity = 0;
-uint32_t gTotalParts = 0;
-uint32_t gRejectParts = 0;
+uint32_t gLifetimeProduction = 0;
+uint32_t gLifetimeReject = 0;
+uint32_t gProductionBaseline = 0;
+uint32_t gRejectBaseline = 0;
 uint32_t gLossSeconds[17] = {0};
 
 uint16_t toPermille(uint64_t numerator, uint64_t denominator) {
@@ -30,10 +30,11 @@ uint32_t subtractFloor(uint32_t value, uint32_t amount) {
 void OEEManager::begin(uint32_t idealCycleTimeMs) {
   gLastUpdateMs = millis();
   gMeasuredElapsedMs = gScheduledElapsedMs = 0;
-  gPlannedShutdownMs = gRunMs = gDowntimeMs = 0;
+  gPlannedShutdownMs = gDowntimeMs = 0;
   gIdealCycleTimeMs = idealCycleTimeMs > 0 ? idealCycleTimeMs : 1000;
   gTargetQuantity = 0;
-  gTotalParts = gRejectParts = 0;
+  gLifetimeProduction = gLifetimeReject = 0;
+  gProductionBaseline = gRejectBaseline = 0;
   for (uint8_t i = 0; i < 17; ++i) gLossSeconds[i] = 0;
 }
 
@@ -43,9 +44,8 @@ void OEEManager::update(bool downtime, uint32_t totalParts, uint32_t rejectParts
   gLastUpdateMs = now;
   gMeasuredElapsedMs += elapsed;
   if (downtime) gDowntimeMs += elapsed;
-  else gRunMs += elapsed;
-  gTotalParts = totalParts;
-  gRejectParts = rejectParts;
+  gLifetimeProduction = totalParts;
+  gLifetimeReject = rejectParts;
 }
 
 void OEEManager::setIdealCycleTimeMs(uint32_t idealCycleTimeMs) {
@@ -56,6 +56,11 @@ void OEEManager::setTargetQuantity(uint32_t targetQuantity) { gTargetQuantity = 
 
 void OEEManager::setScheduledShiftElapsedSeconds(uint32_t elapsedSeconds) {
   gScheduledElapsedMs = elapsedSeconds * 1000UL;
+}
+
+void OEEManager::setCounterBaselines(uint32_t totalParts, uint32_t rejectParts) {
+  gProductionBaseline = totalParts;
+  gRejectBaseline = rejectParts;
 }
 
 void OEEManager::recordLoss(uint16_t lossCode, uint32_t durationSeconds) {
@@ -70,7 +75,9 @@ void OEEManager::recordLoss(uint16_t lossCode, uint32_t durationSeconds) {
 }
 
 OEESnapshot OEEManager::snapshot() {
-  const uint32_t goodParts = gTotalParts > gRejectParts ? gTotalParts - gRejectParts : 0;
+  const uint32_t shiftProduction = subtractFloor(gLifetimeProduction, gProductionBaseline);
+  const uint32_t shiftReject = subtractFloor(gLifetimeReject, gRejectBaseline);
+  const uint32_t goodParts = shiftProduction > shiftReject ? shiftProduction - shiftReject : 0;
   const uint32_t scheduledBaseMs = gScheduledElapsedMs > 0 ? gScheduledElapsedMs : gMeasuredElapsedMs;
   const uint32_t plannedProductionMs = subtractFloor(scheduledBaseMs, gPlannedShutdownMs);
   const uint32_t boundedDowntimeMs = gDowntimeMs < plannedProductionMs ? gDowntimeMs : plannedProductionMs;
@@ -84,8 +91,8 @@ OEESnapshot OEEManager::snapshot() {
   value.downtimeSeconds = boundedDowntimeMs / 1000UL;
   value.targetQuantity = gTargetQuantity;
   value.availabilityPermille = toPermille(calculatedRunMs, plannedProductionMs);
-  value.performancePermille = toPermille(static_cast<uint64_t>(gIdealCycleTimeMs) * gTotalParts, calculatedRunMs);
-  value.qualityPermille = gTotalParts == 0 ? 1000 : toPermille(goodParts, gTotalParts);
+  value.performancePermille = toPermille(static_cast<uint64_t>(gIdealCycleTimeMs) * shiftProduction, calculatedRunMs);
+  value.qualityPermille = shiftProduction == 0 ? 1000 : toPermille(goodParts, shiftProduction);
   value.oeePermille = static_cast<uint16_t>((static_cast<uint32_t>(value.availabilityPermille) * value.performancePermille * value.qualityPermille) / 1000000UL);
   return value;
 }
@@ -94,10 +101,32 @@ uint32_t OEEManager::lossSeconds(uint16_t lossCode) {
   return (lossCode >= 1 && lossCode <= 16) ? gLossSeconds[lossCode] : 0;
 }
 
+OEEPersistentState OEEManager::persistentState() {
+  OEEPersistentState state = {};
+  state.measuredElapsedMs = gMeasuredElapsedMs;
+  state.plannedShutdownMs = gPlannedShutdownMs;
+  state.downtimeMs = gDowntimeMs;
+  state.productionBaseline = gProductionBaseline;
+  state.rejectBaseline = gRejectBaseline;
+  for (uint8_t i = 0; i < 17; ++i) state.lossSeconds[i] = gLossSeconds[i];
+  return state;
+}
+
+void OEEManager::restorePersistentState(const OEEPersistentState &state) {
+  gMeasuredElapsedMs = state.measuredElapsedMs;
+  gPlannedShutdownMs = state.plannedShutdownMs;
+  gDowntimeMs = state.downtimeMs;
+  gProductionBaseline = state.productionBaseline;
+  gRejectBaseline = state.rejectBaseline;
+  for (uint8_t i = 0; i < 17; ++i) gLossSeconds[i] = state.lossSeconds[i];
+  gLastUpdateMs = millis();
+}
+
 void OEEManager::resetShift() {
   gLastUpdateMs = millis();
   gMeasuredElapsedMs = gScheduledElapsedMs = 0;
-  gPlannedShutdownMs = gRunMs = gDowntimeMs = 0;
-  gTotalParts = gRejectParts = 0;
+  gPlannedShutdownMs = gDowntimeMs = 0;
+  gProductionBaseline = gLifetimeProduction;
+  gRejectBaseline = gLifetimeReject;
   for (uint8_t i = 0; i < 17; ++i) gLossSeconds[i] = 0;
 }
