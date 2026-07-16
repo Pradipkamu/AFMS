@@ -13,8 +13,9 @@ uint8_t gLength = 0;
 uint32_t gLastByteUs = 0;
 
 // Holding-register offsets 0..15 are HMI command registers.
-// Offset 94 (40095) is a DOPSoft-friendly alias for the loss command.
+// Offset 94 (40095) is a DOPSoft-friendly alias for loss command offset 0 (40001).
 constexpr uint16_t kWritableRegisterCount = 16;
+constexpr uint16_t kLossCommandOffset = 0;
 constexpr uint16_t kLossCommandAliasOffset = 94;
 constexpr uint32_t kFrameGapUs = 4500UL;
 
@@ -26,6 +27,13 @@ bool writableRange(uint16_t address, uint16_t quantity) {
   if (quantity == 0) return false;
   if (address < kWritableRegisterCount && address + quantity <= kWritableRegisterCount) return true;
   return address == kLossCommandAliasOffset && quantity == 1;
+}
+
+void storeRegister(uint16_t address, uint16_t value) {
+  gRegisters[address] = value;
+  if (address == kLossCommandAliasOffset) {
+    gRegisters[kLossCommandOffset] = value;
+  }
 }
 
 uint16_t crc16(const uint8_t *data, uint16_t length) {
@@ -76,7 +84,7 @@ void processFrame() {
     sendFrame(reply, static_cast<uint8_t>(3 + quantity * 2U));
   } else if (functionCode == 0x06) {
     if (!writableAddress(address) || address >= gRegisterCount) { exception(functionCode, 0x02); return; }
-    gRegisters[address] = quantityOrValue;
+    storeRegister(address, quantityOrValue);
     uint8_t reply[8];
     memcpy(reply, gFrame, 6);
     sendFrame(reply, 6);
@@ -88,7 +96,8 @@ void processFrame() {
       return;
     }
     for (uint16_t i = 0; i < quantity; ++i) {
-      gRegisters[address + i] = static_cast<uint16_t>(gFrame[7 + i * 2] << 8U) | gFrame[8 + i * 2];
+      const uint16_t value = static_cast<uint16_t>(gFrame[7 + i * 2] << 8U) | gFrame[8 + i * 2];
+      storeRegister(address + i, value);
     }
     uint8_t reply[8] = {gSlaveId, functionCode, gFrame[2], gFrame[3], gFrame[4], gFrame[5], 0, 0};
     sendFrame(reply, 6);
