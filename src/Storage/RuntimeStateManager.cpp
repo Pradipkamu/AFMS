@@ -30,12 +30,10 @@ uint32_t mix(uint32_t value, uint32_t item) {
   return (value << 5) | (value >> 27);
 }
 
-uint32_t checksum(uint32_t production,
-                  uint32_t reject,
-                  const ShiftSnapshot &shift,
-                  const OEEPersistentState &oee,
-                  uint16_t lastLossCode,
-                  uint32_t lastLossDurationSeconds) {
+uint32_t checksumV2(uint32_t production,
+                    uint32_t reject,
+                    const ShiftSnapshot &shift,
+                    const OEEPersistentState &oee) {
   uint32_t value = 0xA5F5022AUL;
   value = mix(value, production);
   value = mix(value, reject);
@@ -52,9 +50,19 @@ uint32_t checksum(uint32_t production,
   value = mix(value, oee.productionBaseline);
   value = mix(value, oee.rejectBaseline);
   for (uint8_t i = 0; i < 17; ++i) value = mix(value, oee.lossSeconds[i]);
+  for (size_t i = 0; i < sizeof(shift.partName); ++i) value = (value * 33UL) ^ static_cast<uint8_t>(shift.partName[i]);
+  return value;
+}
+
+uint32_t checksumV3(uint32_t production,
+                    uint32_t reject,
+                    const ShiftSnapshot &shift,
+                    const OEEPersistentState &oee,
+                    uint16_t lastLossCode,
+                    uint32_t lastLossDurationSeconds) {
+  uint32_t value = checksumV2(production, reject, shift, oee);
   value = mix(value, lastLossCode);
   value = mix(value, lastLossDurationSeconds);
-  for (size_t i = 0; i < sizeof(shift.partName); ++i) value = (value * 33UL) ^ static_cast<uint8_t>(shift.partName[i]);
   return value;
 }
 
@@ -110,8 +118,8 @@ bool restoreState() {
   const uint32_t lastLossDurationSeconds = version >= 3U ? (document["last_loss_duration_seconds"] | 0UL) : 0UL;
   const uint32_t storedChecksum = document["checksum"] | 0UL;
   const uint32_t expectedChecksum = version >= 3U
-      ? checksum(production, reject, shift, oee, lastLossCode, lastLossDurationSeconds)
-      : checksum(production, reject, shift, oee, 0, 0);
+      ? checksumV3(production, reject, shift, oee, lastLossCode, lastLossDurationSeconds)
+      : checksumV2(production, reject, shift, oee);
   if (storedChecksum != expectedChecksum) return false;
 
   ProductionManager::restore(production);
@@ -120,7 +128,7 @@ bool restoreState() {
   OEEManager::restorePersistentState(oee);
   OEEManager::setTargetQuantity(shift.targetQuantity);
   MachineEngine::restoreLastLoss(lastLossCode, lastLossDurationSeconds);
-  gLastSavedChecksum = storedChecksum;
+  gLastSavedChecksum = version >= 3U ? storedChecksum : 0;
   Logger::info(String(F("[STATE] Restored production=")) + production + F(", reject=") + reject);
   return true;
 }
@@ -150,7 +158,7 @@ bool RuntimeStateManager::saveNow() {
   const OEEPersistentState oee = OEEManager::persistentState();
   const uint16_t lastLossCode = MachineEngine::lastAcceptedLossCode();
   const uint32_t lastLossDurationSeconds = MachineEngine::lastLossDurationSeconds();
-  const uint32_t currentChecksum = checksum(production, reject, shift, oee, lastLossCode, lastLossDurationSeconds);
+  const uint32_t currentChecksum = checksumV3(production, reject, shift, oee, lastLossCode, lastLossDurationSeconds);
   if (currentChecksum == gLastSavedChecksum) return true;
 
   DynamicJsonDocument document(4608);
