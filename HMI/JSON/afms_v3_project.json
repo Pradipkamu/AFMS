@@ -1,0 +1,40 @@
+{
+  "project": "AFMS v3.0.0",
+  "target": {"model": "DOP-107CV", "width": 800, "height": 480},
+  "communication": {
+    "protocol": "Modbus RTU",
+    "transport": "RS-485",
+    "station": 1,
+    "baud": 9600,
+    "data_bits": 8,
+    "parity": "none",
+    "stop_bits": 1,
+    "register_base": 0
+  },
+  "theme": {
+    "background": "#101820",
+    "panel": "#1B2733",
+    "text": "#F5F7FA",
+    "accent": "#00A6D6",
+    "good": "#27AE60",
+    "warning": "#F2C94C",
+    "alarm": "#EB5757"
+  },
+  "screens": [
+    {"number": 1, "name": "Dashboard", "purpose": "Machine state, production, target, good, reject, OEE, shift and communication overview"},
+    {"number": 2, "name": "Production", "purpose": "Production counters, target remaining, cycle time, run, idle and downtime"},
+    {"number": 3, "name": "OEE", "purpose": "Availability, performance, quality and OEE values in percent"},
+    {"number": 4, "name": "Shift Setup", "purpose": "Operator, shift, target quantity, part number and part name entry"},
+    {"number": 5, "name": "Loss Entry", "purpose": "Loss-code entry and current alarm/loss status"},
+    {"number": 6, "name": "Connectivity", "purpose": "Wi-Fi, Google Sheets, Telegram, queue and delivery counters"},
+    {"number": 7, "name": "Diagnostics", "purpose": "Modbus requests/errors, RSSI, heartbeat, last request age and clock sync"},
+    {"number": 8, "name": "System", "purpose": "AFMS version, HMI communication settings, date/time and service information"}
+  ],
+  "common_layout": {
+    "header": {"x": 0, "y": 0, "width": 800, "height": 52},
+    "content": {"x": 12, "y": 62, "width": 776, "height": 348},
+    "navigation": {"x": 0, "y": 420, "width": 800, "height": 60}
+  },
+  "source_register_map": "src/HMI/RegisterMap.h",
+  "status": "project-definition-ready"
+}
