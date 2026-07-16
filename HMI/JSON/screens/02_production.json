@@ -1,0 +1,63 @@
+{
+  "screen": {
+    "number": 2,
+    "name": "Production",
+    "title": "AFMS PRODUCTION MONITOR",
+    "resolution": {"width": 800, "height": 480},
+    "background": "#101820",
+    "refresh_ms": 250,
+    "objects": [
+      {"id":"title","type":"text","x":18,"y":8,"width":430,"height":36,"text":"AFMS PRODUCTION MONITOR","font_size":24,"foreground":"#FFFFFF"},
+      {"id":"state_value","type":"numeric_state_display","x":560,"y":8,"width":130,"height":34,"tag":"StatusMachineState","register":16,"states":{"0":"STOPPED","1":"RUNNING","2":"IDLE","3":"ALARM"},"font_size":20,"align":"center"},
+      {"id":"comm_lamp","type":"word_state_lamp","x":706,"y":10,"width":32,"height":30,"tag":"StatusCommunication","register":26,"states":{"0":"#D62828","1":"#2A9D8F"}},
+      {"id":"comm_text","type":"text","x":742,"y":12,"width":44,"height":26,"text":"485","font_size":16,"foreground":"#FFFFFF"},
+
+      {"id":"total_panel","type":"panel","x":18,"y":58,"width":244,"height":118,"fill":"#1F2A33","border":"#3A506B"},
+      {"id":"total_label","type":"text","x":30,"y":68,"width":220,"height":26,"text":"TOTAL PRODUCTION","font_size":18,"align":"center","foreground":"#BFC9D4"},
+      {"id":"total_value","type":"numeric_display_32","x":38,"y":100,"width":204,"height":56,"tag_low":"StatusProductionLow","tag_high":"StatusProductionHigh","register_low":17,"register_high":18,"font_size":38,"align":"center","format":"unsigned"},
+
+      {"id":"shift_panel","type":"panel","x":278,"y":58,"width":244,"height":118,"fill":"#12372A","border":"#2A9D8F"},
+      {"id":"shift_label","type":"text","x":290,"y":68,"width":220,"height":26,"text":"SHIFT PRODUCTION","font_size":18,"align":"center","foreground":"#BFE3D6"},
+      {"id":"shift_value","type":"numeric_display_32","x":298,"y":100,"width":204,"height":56,"tag_low":"StatusShiftProductionLow","tag_high":"StatusShiftProductionHigh","register_low":43,"register_high":44,"font_size":38,"align":"center","format":"unsigned","foreground":"#5EE1A2"},
+
+      {"id":"remaining_panel","type":"panel","x":538,"y":58,"width":244,"height":118,"fill":"#332B16","border":"#F2C94C"},
+      {"id":"remaining_label","type":"text","x":550,"y":68,"width":220,"height":26,"text":"TARGET REMAINING","font_size":18,"align":"center","foreground":"#F6E7A8"},
+      {"id":"remaining_value","type":"numeric_display_32","x":558,"y":100,"width":204,"height":56,"tag_low":"StatusTargetRemainingLow","tag_high":"StatusTargetRemainingHigh","register_low":49,"register_high":50,"font_size":38,"align":"center","format":"unsigned","foreground":"#FFE082"},
+
+      {"id":"good_panel","type":"panel","x":18,"y":192,"width":244,"height":92,"fill":"#12372A","border":"#2A9D8F"},
+      {"id":"good_label","type":"text","x":30,"y":202,"width":100,"height":28,"text":"GOOD","font_size":18,"foreground":"#BFE3D6"},
+      {"id":"good_value","type":"numeric_display_32","x":130,"y":198,"width":116,"height":40,"tag_low":"StatusGoodLow","tag_high":"StatusGoodHigh","register_low":21,"register_high":22,"font_size":28,"align":"right","format":"unsigned","foreground":"#5EE1A2"},
+      {"id":"shift_good_label","type":"text","x":30,"y":246,"width":100,"height":28,"text":"SHIFT GOOD","font_size":16,"foreground":"#BFE3D6"},
+      {"id":"shift_good_value","type":"numeric_display_32","x":130,"y":242,"width":116,"height":36,"tag_low":"StatusShiftGoodLow","tag_high":"StatusShiftGoodHigh","register_low":47,"register_high":48,"font_size":24,"align":"right","format":"unsigned"},
+
+      {"id":"reject_panel","type":"panel","x":278,"y":192,"width":244,"height":92,"fill":"#3A1717","border":"#D62828"},
+      {"id":"reject_label","type":"text","x":290,"y":202,"width":100,"height":28,"text":"REJECT","font_size":18,"foreground":"#F4C2C2"},
+      {"id":"reject_value","type":"numeric_display_32","x":390,"y":198,"width":116,"height":40,"tag_low":"StatusRejectLow","tag_high":"StatusRejectHigh","register_low":19,"register_high":20,"font_size":28,"align":"right","format":"unsigned","foreground":"#FF6B6B"},
+      {"id":"shift_reject_label","type":"text","x":290,"y":246,"width":100,"height":28,"text":"SHIFT REJ","font_size":16,"foreground":"#F4C2C2"},
+      {"id":"shift_reject_value","type":"numeric_display_32","x":390,"y":242,"width":116,"height":36,"tag_low":"StatusShiftRejectLow","tag_high":"StatusShiftRejectHigh","register_low":45,"register_high":46,"font_size":24,"align":"right","format":"unsigned"},
+
+      {"id":"target_panel","type":"panel","x":538,"y":192,"width":244,"height":92,"fill":"#1F2A33","border":"#3A506B"},
+      {"id":"target_label","type":"text","x":550,"y":202,"width":96,"height":28,"text":"TARGET","font_size":18,"foreground":"#BFC9D4"},
+      {"id":"target_value","type":"numeric_display_32","x":650,"y":198,"width":116,"height":40,"tag_low":"StatusTargetQuantityLow","tag_high":"StatusTargetQuantityHigh","register_low":36,"register_high":37,"font_size":28,"align":"right","format":"unsigned"},
+      {"id":"shift_number_label","type":"text","x":550,"y":246,"width":96,"height":28,"text":"SHIFT","font_size":18,"foreground":"#BFC9D4"},
+      {"id":"shift_number_value","type":"numeric_display","x":650,"y":242,"width":116,"height":36,"tag":"StatusShift","register":38,"font_size":24,"align":"right"},
+
+      {"id":"time_panel","type":"panel","x":18,"y":300,"width":764,"height":70,"fill":"#1F2A33","border":"#3A506B"},
+      {"id":"run_label","type":"text","x":34,"y":312,"width":92,"height":24,"text":"RUN TIME","font_size":16,"foreground":"#BFC9D4"},
+      {"id":"run_value","type":"duration_display_32","x":34,"y":338,"width":150,"height":26,"tag_low":"StatusRunSecondsLow","tag_high":"StatusRunSecondsHigh","register_low":28,"register_high":29,"format":"hh:mm:ss","font_size":20},
+      {"id":"idle_label","type":"text","x":224,"y":312,"width":92,"height":24,"text":"IDLE TIME","font_size":16,"foreground":"#BFC9D4"},
+      {"id":"idle_value","type":"duration_display_32","x":224,"y":338,"width":150,"height":26,"tag_low":"StatusIdleSecondsLow","tag_high":"StatusIdleSecondsHigh","register_low":23,"register_high":24,"format":"hh:mm:ss","font_size":20},
+      {"id":"down_label","type":"text","x":414,"y":312,"width":120,"height":24,"text":"DOWNTIME","font_size":16,"foreground":"#BFC9D4"},
+      {"id":"down_value","type":"duration_display_32","x":414,"y":338,"width":150,"height":26,"tag_low":"StatusDowntimeSecondsLow","tag_high":"StatusDowntimeSecondsHigh","register_low":30,"register_high":31,"format":"hh:mm:ss","font_size":20},
+      {"id":"cycle_label","type":"text","x":604,"y":312,"width":112,"height":24,"text":"CYCLE TIME","font_size":16,"foreground":"#BFC9D4"},
+      {"id":"cycle_value","type":"numeric_display","x":604,"y":338,"width":150,"height":26,"tag":"StatusCycleTimeSeconds","register":74,"suffix":" s","font_size":20,"align":"center"},
+
+      {"id":"nav_dashboard","type":"screen_change_button","x":18,"y":386,"width":118,"height":70,"text":"DASHBOARD","target_screen":1},
+      {"id":"nav_oee","type":"screen_change_button","x":146,"y":386,"width":94,"height":70,"text":"OEE","target_screen":3},
+      {"id":"nav_shift","type":"screen_change_button","x":250,"y":386,"width":106,"height":70,"text":"SHIFT","target_screen":4},
+      {"id":"nav_loss","type":"screen_change_button","x":366,"y":386,"width":106,"height":70,"text":"LOSS","target_screen":5},
+      {"id":"nav_connectivity","type":"screen_change_button","x":482,"y":386,"width":138,"height":70,"text":"CONNECT","target_screen":6},
+      {"id":"nav_diagnostics","type":"screen_change_button","x":630,"y":386,"width":152,"height":70,"text":"DIAGNOSTICS","target_screen":7}
+    ]
+  }
+}
