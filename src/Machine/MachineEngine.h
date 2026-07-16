@@ -6,5 +6,7 @@ void begin();
 void update();
 bool ready();
 MachineSnapshot snapshot();
-void acknowledgeLossCode(uint16_t lossCode);
+bool acknowledgeLossCode(uint16_t lossCode);
+uint16_t lastAcceptedLossCode();
+uint32_t lastLossDurationSeconds();
 }
