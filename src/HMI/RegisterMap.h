@@ -84,5 +84,9 @@ constexpr uint16_t StatusLastLossCode = 86;
 constexpr uint16_t StatusLastLossDurationLow = 87;
 constexpr uint16_t StatusLastLossDurationHigh = 88;
 constexpr uint16_t StatusLossCommandResult = 89; // 0 none, 1 accepted, 2 rejected
-constexpr uint16_t RegisterCount = 90;
+constexpr uint16_t StatusAdjustedTargetLow = 90;
+constexpr uint16_t StatusAdjustedTargetHigh = 91;
+constexpr uint16_t StatusAdjustedTargetRemainingLow = 92;
+constexpr uint16_t StatusAdjustedTargetRemainingHigh = 93;
+constexpr uint16_t RegisterCount = 94;
 }
