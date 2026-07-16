@@ -25,6 +25,7 @@ uint16_t gShiftStartMinutes[3] = {360, 840, 1320};
 uint16_t gShiftEndMinutes[3] = {840, 1320, 360};
 bool gShiftScheduleValid = false;
 uint32_t gLossAlarmDelaySeconds = kDefaultLossAlarmDelaySeconds;
+bool gAlarmActiveHigh = true;
 
 void copyValue(const char *value, char *dest, size_t size) {
   strlcpy(dest, value ? value : "", size);
@@ -78,7 +79,6 @@ uint32_t readLossAlarmDelaySeconds(const JsonDocument &document) {
     value = document["idleDelaySeconds"].as<uint32_t>();
     Logger::warn(F("[LOSS] Legacy idleDelaySeconds detected; use loss_alarm_delay_seconds"));
   }
-
   if (value < kMinLossAlarmDelaySeconds || value > kMaxLossAlarmDelaySeconds) {
     Logger::warn(F("[LOSS] Alarm delay out of range; using 600 seconds"));
     return kDefaultLossAlarmDelaySeconds;
@@ -93,6 +93,7 @@ bool Config::load() {
     Logger::warn(F("Config file missing or invalid; using defaults"));
     gShiftScheduleValid = false;
     gLossAlarmDelaySeconds = kDefaultLossAlarmDelaySeconds;
+    gAlarmActiveHigh = true;
     return false;
   }
 
@@ -110,9 +111,11 @@ bool Config::load() {
   }
 
   gLossAlarmDelaySeconds = readLossAlarmDelaySeconds(document);
+  gAlarmActiveHigh = document["alarm_active_high"] | true;
   gShiftScheduleValid = validateShiftSchedule();
   Logger::info(String(F("Config loaded for ")) + gMachineId);
   Logger::info(String(F("[LOSS] Alarm delay: ")) + gLossAlarmDelaySeconds + F(" sec"));
+  Logger::info(String(F("[LOSS] Alarm output active ")) + (gAlarmActiveHigh ? F("HIGH") : F("LOW")));
   if (!gShiftScheduleValid) Logger::error(F("[SHIFT] Invalid shift configuration; automatic shifts disabled"));
   return true;
 }
@@ -128,6 +131,7 @@ bool Config::save() {
   document["google_web_app_url"] = gGoogleWebAppUrl;
   document["api_token"] = gApiToken;
   document["loss_alarm_delay_seconds"] = gLossAlarmDelaySeconds;
+  document["alarm_active_high"] = gAlarmActiveHigh;
   document.remove("idle_delay_seconds");
   document.remove("idleDelaySeconds");
   for (uint8_t i = 0; i < 3; ++i) {
@@ -189,3 +193,4 @@ uint16_t Config::shiftStartMinutes(uint8_t index) { return index < 3 ? gShiftSta
 uint16_t Config::shiftEndMinutes(uint8_t index) { return index < 3 ? gShiftEndMinutes[index] : 0; }
 bool Config::shiftScheduleValid() { return gShiftScheduleValid; }
 uint32_t Config::lossAlarmDelaySeconds() { return gLossAlarmDelaySeconds; }
+bool Config::alarmActiveHigh() { return gAlarmActiveHigh; }
