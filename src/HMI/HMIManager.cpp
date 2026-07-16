@@ -74,6 +74,26 @@ uint32_t adjustedTarget(uint32_t originalTarget,
   return static_cast<uint32_t>((static_cast<uint64_t>(originalTarget) * productiveSeconds) /
                                shiftSeconds);
 }
+
+uint16_t consumeLossCommand() {
+  uint16_t selectedCode = 0;
+
+  // Coils 0..15 are the preferred DOPSoft loss buttons. Consume every asserted
+  // coil so a stale second press cannot be processed after the alarm clears.
+  for (uint16_t coil = 0; coil < 16; ++coil) {
+    if (ModbusSlave::consumeCoil(coil) && selectedCode == 0) {
+      selectedCode = static_cast<uint16_t>(coil + 1U);
+    }
+  }
+
+  // Retain both holding-register command paths for backward compatibility.
+  if (selectedCode == 0) selectedCode = gRegisters[HMIRegister::CommandLossCode];
+  if (selectedCode == 0) selectedCode = gRegisters[HMIRegister::CommandLossCodeAlias];
+
+  gRegisters[HMIRegister::CommandLossCode] = 0;
+  gRegisters[HMIRegister::CommandLossCodeAlias] = 0;
+  return selectedCode;
+}
 }
 
 void HMIManager::begin() {
@@ -83,18 +103,20 @@ void HMIManager::begin() {
   gRegisters[HMIRegister::CommandShift] = 1;
   gLastHmiHeartbeatMs = millis();
   Logger::info(F("Delta HMI Modbus RTU hardware UART ready"));
+  Logger::info(F("[LOSS] HMI coils 00001-00016 mapped to Loss 1-16"));
 }
 
 void HMIManager::update() {
   ModbusSlave::update();
   bool criticalChange = false;
 
-  const uint16_t lossCode = gRegisters[HMIRegister::CommandLossCode];
+  const uint16_t lossCode = consumeLossCommand();
   if (lossCode != 0) {
     const bool accepted = MachineEngine::acknowledgeLossCode(lossCode);
     gRegisters[HMIRegister::StatusLossCommandResult] = accepted ? 1 : 2;
-    gRegisters[HMIRegister::CommandLossCode] = 0;
     criticalChange |= accepted;
+    Logger::info(String(F("[LOSS] HMI command ")) + lossCode +
+                 (accepted ? F(" accepted") : F(" rejected")));
   }
 
   const uint16_t cycleSeconds = gRegisters[HMIRegister::CommandCycleTimeSeconds];
@@ -165,7 +187,11 @@ void HMIManager::update() {
   gRegisters[HMIRegister::StatusPerformancePermille] = machine.performancePermille;
   gRegisters[HMIRegister::StatusQualityPermille] = machine.qualityPermille;
   gRegisters[HMIRegister::StatusOeePermille] = machine.oeePermille;
-  write32(HMIRegister::StatusTargetQuantityLow, machine.targetQuantity);
+
+  // The original production target belongs to the active shift. Do not source
+  // this register from the OEE snapshot, because it can lag during restore or
+  // initialization.
+  write32(HMIRegister::StatusTargetQuantityLow, shiftData.targetQuantity);
   gRegisters[HMIRegister::StatusShift] = shiftData.shiftId;
   write32(HMIRegister::StatusOperatorIdLow, shiftData.operatorId);
   write32(HMIRegister::StatusPartNumberLow, shiftData.partNumber);
