@@ -1,9 +1,13 @@
 #include "Config.h"
 #include "Logger.h"
 #include <LittleFS.h>
+#include <ArduinoJson.h>
 #include <cstring>
 
 namespace {
+constexpr const char *kConfigPath = "/machine.json";
+constexpr const char *kTempPath = "/machine.json.tmp";
+constexpr const char *kBackupPath = "/machine.json.bak";
 char gMachineId[16] = "MCH001";
 char gMachineName[32] = "PRESS-01";
 char gWifiSsid[33] = "";
@@ -17,28 +21,8 @@ uint16_t gShiftStartMinutes[3] = {360, 840, 1320};
 uint16_t gShiftEndMinutes[3] = {840, 1320, 360};
 bool gShiftScheduleValid = false;
 
-void copyJsonString(const String &json, const char *key, char *dest, size_t size) {
-  const String token = String('"') + key + "\"";
-  int keyPos = json.indexOf(token);
-  if (keyPos < 0) return;
-  int colon = json.indexOf(':', keyPos + token.length());
-  int firstQuote = json.indexOf('"', colon + 1);
-  int secondQuote = json.indexOf('"', firstQuote + 1);
-  if (colon < 0 || firstQuote < 0 || secondQuote < 0) return;
-  String value = json.substring(firstQuote + 1, secondQuote);
-  value.replace("\\\"", "\"");
-  value.replace("\\\\", "\\");
-  value.toCharArray(dest, size);
-}
-
-String escapeJson(const char *value) {
-  String out;
-  if (!value) return out;
-  while (*value) {
-    if (*value == '"' || *value == '\\') out += '\\';
-    out += *value++;
-  }
-  return out;
+void copyValue(const char *value, char *dest, size_t size) {
+  strlcpy(dest, value ? value : "", size);
 }
 
 void assign(const String &value, char *dest, size_t size) {
@@ -69,34 +53,36 @@ bool validateShiftSchedule() {
          gShiftEndMinutes[1] == gShiftStartMinutes[2] &&
          gShiftEndMinutes[2] == gShiftStartMinutes[0];
 }
+
+bool loadDocument(DynamicJsonDocument &document) {
+  File file = LittleFS.open(kConfigPath, "r");
+  if (!file) return false;
+  const DeserializationError error = deserializeJson(document, file);
+  file.close();
+  return !error;
+}
 }
 
 bool Config::load() {
-  File file = LittleFS.open("/machine.json", "r");
-  if (!file) {
-    Logger::warn(F("Config file not found; using defaults"));
+  DynamicJsonDocument document(6144);
+  if (!loadDocument(document)) {
+    Logger::warn(F("Config file missing or invalid; using defaults"));
     gShiftScheduleValid = false;
     return false;
   }
 
-  const String json = file.readString();
-  file.close();
-
-  copyJsonString(json, "machine_id", gMachineId, sizeof(gMachineId));
-  copyJsonString(json, "machine_name", gMachineName, sizeof(gMachineName));
-  copyJsonString(json, "wifi_ssid", gWifiSsid, sizeof(gWifiSsid));
-  copyJsonString(json, "wifi_password", gWifiPassword, sizeof(gWifiPassword));
-  copyJsonString(json, "google_web_app_url", gGoogleWebAppUrl, sizeof(gGoogleWebAppUrl));
-  copyJsonString(json, "api_token", gApiToken, sizeof(gApiToken));
-  copyJsonString(json, "shift_1_name", gShiftName[0], sizeof(gShiftName[0]));
-  copyJsonString(json, "shift_1_start", gShiftStart[0], sizeof(gShiftStart[0]));
-  copyJsonString(json, "shift_1_end", gShiftEnd[0], sizeof(gShiftEnd[0]));
-  copyJsonString(json, "shift_2_name", gShiftName[1], sizeof(gShiftName[1]));
-  copyJsonString(json, "shift_2_start", gShiftStart[1], sizeof(gShiftStart[1]));
-  copyJsonString(json, "shift_2_end", gShiftEnd[1], sizeof(gShiftEnd[1]));
-  copyJsonString(json, "shift_3_name", gShiftName[2], sizeof(gShiftName[2]));
-  copyJsonString(json, "shift_3_start", gShiftStart[2], sizeof(gShiftStart[2]));
-  copyJsonString(json, "shift_3_end", gShiftEnd[2], sizeof(gShiftEnd[2]));
+  copyValue(document["machine_id"] | gMachineId, gMachineId, sizeof(gMachineId));
+  copyValue(document["machine_name"] | gMachineName, gMachineName, sizeof(gMachineName));
+  copyValue(document["wifi_ssid"] | gWifiSsid, gWifiSsid, sizeof(gWifiSsid));
+  copyValue(document["wifi_password"] | gWifiPassword, gWifiPassword, sizeof(gWifiPassword));
+  copyValue(document["google_web_app_url"] | gGoogleWebAppUrl, gGoogleWebAppUrl, sizeof(gGoogleWebAppUrl));
+  copyValue(document["api_token"] | gApiToken, gApiToken, sizeof(gApiToken));
+  for (uint8_t i = 0; i < 3; ++i) {
+    String prefix = String(F("shift_")) + (i + 1);
+    copyValue(document[(prefix + F("_name")).c_str()] | gShiftName[i], gShiftName[i], sizeof(gShiftName[i]));
+    copyValue(document[(prefix + F("_start")).c_str()] | gShiftStart[i], gShiftStart[i], sizeof(gShiftStart[i]));
+    copyValue(document[(prefix + F("_end")).c_str()] | gShiftEnd[i], gShiftEnd[i], sizeof(gShiftEnd[i]));
+  }
 
   gShiftScheduleValid = validateShiftSchedule();
   Logger::info(String(F("Config loaded for ")) + gMachineId);
@@ -105,30 +91,44 @@ bool Config::load() {
 }
 
 bool Config::save() {
-  File backup = LittleFS.open("/machine.json", "r");
-  if (backup) {
-    File backupOut = LittleFS.open("/machine.json.bak", "w");
-    while (backup.available()) backupOut.write(backup.read());
-    backup.close();
-    backupOut.close();
+  DynamicJsonDocument document(6144);
+  loadDocument(document);  // Preserve every existing and future field.
+
+  document["machine_id"] = gMachineId;
+  document["machine_name"] = gMachineName;
+  document["wifi_ssid"] = gWifiSsid;
+  document["wifi_password"] = gWifiPassword;
+  document["google_web_app_url"] = gGoogleWebAppUrl;
+  document["api_token"] = gApiToken;
+  for (uint8_t i = 0; i < 3; ++i) {
+    String prefix = String(F("shift_")) + (i + 1);
+    document[(prefix + F("_name")).c_str()] = gShiftName[i];
+    document[(prefix + F("_start")).c_str()] = gShiftStart[i];
+    document[(prefix + F("_end")).c_str()] = gShiftEnd[i];
   }
 
-  File file = LittleFS.open("/machine.json", "w");
-  if (!file) return false;
-  file.print(F("{\n  \"machine_id\": \"")); file.print(escapeJson(gMachineId));
-  file.print(F("\",\n  \"machine_name\": \"")); file.print(escapeJson(gMachineName));
-  file.print(F("\",\n  \"wifi_ssid\": \"")); file.print(escapeJson(gWifiSsid));
-  file.print(F("\",\n  \"wifi_password\": \"")); file.print(escapeJson(gWifiPassword));
-  file.print(F("\",\n  \"google_web_app_url\": \"")); file.print(escapeJson(gGoogleWebAppUrl));
-  file.print(F("\",\n  \"api_token\": \"")); file.print(escapeJson(gApiToken));
-  for (uint8_t i = 0; i < 3; ++i) {
-    file.print(F("\",\n  \"shift_")); file.print(i + 1); file.print(F("_name\": \"")); file.print(escapeJson(gShiftName[i]));
-    file.print(F("\",\n  \"shift_")); file.print(i + 1); file.print(F("_start\": \"")); file.print(gShiftStart[i]);
-    file.print(F("\",\n  \"shift_")); file.print(i + 1); file.print(F("_end\": \"")); file.print(gShiftEnd[i]);
+  File temp = LittleFS.open(kTempPath, "w");
+  if (!temp) return false;
+  const size_t written = serializeJsonPretty(document, temp);
+  temp.flush();
+  temp.close();
+  if (written == 0) {
+    LittleFS.remove(kTempPath);
+    return false;
   }
-  file.print(F("\"\n}\n"));
-  file.close();
-  Logger::info(F("Configuration saved"));
+
+  LittleFS.remove(kBackupPath);
+  if (LittleFS.exists(kConfigPath) && !LittleFS.rename(kConfigPath, kBackupPath)) {
+    LittleFS.remove(kTempPath);
+    return false;
+  }
+  if (!LittleFS.rename(kTempPath, kConfigPath)) {
+    if (LittleFS.exists(kBackupPath)) LittleFS.rename(kBackupPath, kConfigPath);
+    LittleFS.remove(kTempPath);
+    return false;
+  }
+  LittleFS.remove(kBackupPath);
+  Logger::info(F("Configuration saved without removing extended fields"));
   return true;
 }
 
