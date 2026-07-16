@@ -18,6 +18,7 @@ bool gHasProductionPulse = false;
 MachineState gState = MachineState::Ready;
 bool gWasIdle = false;
 bool gWasAlarmActive = false;
+bool gLossClassifiedForCurrentIdle = false;
 uint32_t gLossStartIdleSeconds = 0;
 uint16_t gLastAcceptedLossCode = 0;
 uint32_t gLastLossDurationSeconds = 0;
@@ -38,6 +39,7 @@ void MachineEngine::begin() {
   gState = MachineState::Ready;
   gReady = true;
   gHasProductionPulse = false;
+  gLossClassifiedForCurrentIdle = false;
   EventBus::publish(EventType::MachineReady);
   Logger::info(String(F("[LOSS] Capture alarm activates after ")) +
                Config::lossAlarmDelaySeconds() + F(" idle seconds"));
@@ -49,6 +51,7 @@ void MachineEngine::update() {
 
   while (ProductionManager::consumePulse()) {
     gHasProductionPulse = true;
+    gLossClassifiedForCurrentIdle = false;
     CycleManager::onProduction(nowMs);
     IdleManager::onProduction();
     if (!AlarmManager::active()) gState = MachineState::Running;
@@ -70,14 +73,16 @@ void MachineEngine::update() {
   const bool idleNow = gHasProductionPulse && IdleManager::idle();
   if (idleNow && !gWasIdle) {
     gLossStartIdleSeconds = IdleManager::idleSeconds();
+    gLossClassifiedForCurrentIdle = false;
     gState = MachineState::Idle;
     EventBus::publish(EventType::IdleStarted);
   } else if (!idleNow && gWasIdle) {
+    gLossClassifiedForCurrentIdle = false;
     EventBus::publish(EventType::IdleEnded);
   }
   gWasIdle = idleNow;
 
-  if (gHasProductionPulse && IdleManager::alarmDue()) {
+  if (gHasProductionPulse && IdleManager::alarmDue() && !gLossClassifiedForCurrentIdle) {
     if (!AlarmManager::active()) {
       AlarmManager::set(true);
       ProductionManager::setEnabled(false);
@@ -120,18 +125,23 @@ MachineSnapshot MachineEngine::snapshot() {
 }
 
 bool MachineEngine::acknowledgeLossCode(uint16_t lossCode) {
-  if (lossCode == 0 || lossCode > 16 || !AlarmManager::active()) return false;
+  if (lossCode == 0 || lossCode > 16 || !AlarmManager::active() || gLossClassifiedForCurrentIdle) {
+    return false;
+  }
+
   const uint32_t idleNow = IdleManager::idleSeconds();
   const uint32_t duration = idleNow >= gLossStartIdleSeconds ? idleNow - gLossStartIdleSeconds : 0;
   OEEManager::recordLoss(lossCode, duration);
   EventBus::publish(EventType::LossSelected, lossCode, duration);
+
+  gLossClassifiedForCurrentIdle = true;
   AlarmManager::clear();
   ProductionManager::setEnabled(true);
   gState = IdleManager::idle() ? MachineState::Idle : MachineState::Running;
   gLastAcceptedLossCode = lossCode;
   gLastLossDurationSeconds = duration;
   TelegramClient::queueLoss(lossCode, duration);
-  Logger::info(F("[LOSS] Production counting enabled after loss acknowledgement"));
+  Logger::info(F("[LOSS] Loss captured once; production counting re-enabled"));
   return true;
 }
 
