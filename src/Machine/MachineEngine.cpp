@@ -5,6 +5,7 @@
 #include "IdleManager.h"
 #include "AlarmManager.h"
 #include "OEEManager.h"
+#include "ShiftManager.h"
 #include "../Core/EventBus.h"
 #include "../Core/Logger.h"
 #include "../Core/HardwareConfig.h"
@@ -25,7 +26,7 @@ uint16_t gLastAcceptedLossCode = 0;
 uint32_t gLastLossDurationSeconds = 0;
 
 void restartLossMonitoring(uint32_t nowMs) {
-  CycleManager::onProduction(nowMs);  // Restart cycle-time reference without adding production.
+  CycleManager::onProduction(nowMs);
   IdleManager::onProduction();
   gLossMonitoringActive = true;
   gLossClassifiedForCurrentIdle = false;
@@ -40,6 +41,7 @@ void MachineEngine::begin() {
   ProductionManager::setEnabled(true);
   RejectManager::begin(HardwareConfig::RejectInputPin,
                        PulseConfig::rejectDebounceMs() * 1000UL);
+  RejectManager::setEnabled(true);
   CycleManager::begin(HardwareConfig::DefaultCycleTimeMs);
   IdleManager::begin(Config::lossAlarmDelaySeconds() * 1000UL);
   AlarmManager::begin(HardwareConfig::AlarmOutputPin, true);
@@ -96,7 +98,8 @@ void MachineEngine::update() {
     if (!AlarmManager::active()) {
       AlarmManager::set(true);
       ProductionManager::setEnabled(false);
-      Logger::warn(F("[LOSS] Production counting blocked until loss is acknowledged"));
+      RejectManager::setEnabled(false);
+      Logger::warn(F("[LOSS] Production and reject counting blocked until loss is acknowledged"));
     }
     gState = MachineState::LossRequired;
   }
@@ -106,7 +109,6 @@ void MachineEngine::update() {
   if (!alarmNow && gWasAlarmActive) EventBus::publish(EventType::AlarmCleared);
   gWasAlarmActive = alarmNow;
 
-  // Until a real production pulse arrives, startup/post-loss grace remains non-running OEE time.
   const bool oeeDowntime = !gHasProductionPulse || idleNow || alarmNow;
   OEEManager::update(oeeDowntime, ProductionManager::total(), RejectManager::total());
 }
@@ -117,6 +119,7 @@ MachineSnapshot MachineEngine::snapshot() {
   const uint32_t total = ProductionManager::total();
   const uint32_t rejects = RejectManager::total();
   const OEESnapshot oee = OEEManager::snapshot();
+  const ShiftSnapshot shift = ShiftManager::snapshot();
   MachineSnapshot value;
   value.state = gState;
   value.totalParts = total;
@@ -126,7 +129,7 @@ MachineSnapshot MachineEngine::snapshot() {
   value.idleSeconds = IdleManager::idleSeconds();
   value.runSeconds = oee.runSeconds;
   value.downtimeSeconds = oee.downtimeSeconds;
-  value.targetQuantity = oee.targetQuantity;
+  value.targetQuantity = shift.targetQuantity;
   value.availabilityPermille = oee.availabilityPermille;
   value.performancePermille = oee.performancePermille;
   value.qualityPermille = oee.qualityPermille;
@@ -148,6 +151,7 @@ bool MachineEngine::acknowledgeLossCode(uint16_t lossCode) {
   gLossClassifiedForCurrentIdle = true;
   AlarmManager::clear();
   ProductionManager::setEnabled(true);
+  RejectManager::setEnabled(true);
   gHasProductionPulse = false;
   restartLossMonitoring(millis());
   gState = MachineState::Ready;
@@ -160,3 +164,7 @@ bool MachineEngine::acknowledgeLossCode(uint16_t lossCode) {
 
 uint16_t MachineEngine::lastAcceptedLossCode() { return gLastAcceptedLossCode; }
 uint32_t MachineEngine::lastLossDurationSeconds() { return gLastLossDurationSeconds; }
+void MachineEngine::restoreLastLoss(uint16_t lossCode, uint32_t durationSeconds) {
+  gLastAcceptedLossCode = lossCode <= 16 ? lossCode : 0;
+  gLastLossDurationSeconds = durationSeconds;
+}
