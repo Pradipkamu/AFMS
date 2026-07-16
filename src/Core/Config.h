@@ -21,4 +21,5 @@ const char *shiftEnd(uint8_t index);
 uint16_t shiftStartMinutes(uint8_t index);
 uint16_t shiftEndMinutes(uint8_t index);
 bool shiftScheduleValid();
+uint32_t lossAlarmDelaySeconds();
 }
