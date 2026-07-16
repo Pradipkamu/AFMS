@@ -1,0 +1,52 @@
+{
+  "dopsoft_version": "V1010",
+  "target": "DOP-107CV",
+  "sample_relationship": "sequential edit chain",
+  "confirmed_mappings": {
+    "numeric_object_address": {
+      "samples": ["DOP107CV_R1_Address10.dpa", "DOP107CV_R1_Address20.dpa"],
+      "record_geometry": {"x": 125, "y": 49, "width": 134, "height": 87},
+      "relative_payload_offset": 178,
+      "before_hex": "55",
+      "after_hex": "56",
+      "meaning": "leading decimal digit 1 -> 2",
+      "encoding": "digit XOR 0x54",
+      "confidence": "confirmed"
+    },
+    "text_caption": {
+      "samples": ["DOP107CV_R2_Text_AFMS.dpa", "DOP107CV_R2_Text_Test.dpa"],
+      "record_geometry": {"x": 395, "y": 54, "width": 174, "height": 86},
+      "relative_payload_offsets": [1047, 1049, 1051, 1053],
+      "afms_hex": "25 22 29 37",
+      "test_hex": "30 01 17 10",
+      "encoding": "ASCII character XOR 0x64, stored in alternating bytes",
+      "confidence": "confirmed"
+    },
+    "command_button_address": {
+      "samples": ["DOP107CV_R3_Address1.dpa", "DOP107CV_R3_Address2.dpa"],
+      "record_geometry": {"x": 672, "y": 67, "width": 69, "height": 65},
+      "relative_payload_offset": 189,
+      "before_hex": "55",
+      "after_hex": "56",
+      "meaning": "address 1 -> 2",
+      "encoding": "digit XOR 0x54",
+      "confidence": "confirmed"
+    },
+    "screen_change_target": {
+      "samples": ["DOP107CV_R4_Target1.dpa", "DOP107CV_R4_Target2.dpa"],
+      "record_geometry": {"x": 662, "y": 400, "width": 117, "height": 59},
+      "relative_payload_offsets": [643, 659],
+      "before_hex": ["55", "55"],
+      "after_hex": ["56", "56"],
+      "meaning": "screen target 1 -> 2, duplicated in the object record",
+      "encoding": "digit XOR 0x54",
+      "confidence": "confirmed"
+    }
+  },
+  "important_notes": [
+    "DOPSoft re-encodes global payload regions on save; comparisons must be anchored to object geometry records.",
+    "The supplied property samples form a sequential edit chain, so later files contain earlier object edits.",
+    "Scalar encodings are confirmed, but a production writer must also locate the correct record and update all required duplicate/cache fields."
+  ],
+  "next_step": "Implement a guarded record-local property rewriter and generate four independent DOPSoft compatibility tests."
+}
