@@ -39,8 +39,53 @@ void refreshCounters() {
   gShift.good = gShift.production > gShift.reject ? gShift.production - gShift.reject : 0;
 }
 
+bool minuteInRange(uint16_t minute, uint16_t start, uint16_t end) {
+  return start < end ? (minute >= start && minute < end)
+                     : (minute >= start || minute < end);
+}
+
+uint16_t scheduledShiftId() {
+  const time_t now = TimeManager::now();
+  struct tm local;
+  if (!localtime_r(&now, &local)) return 0;
+  const uint16_t minute = static_cast<uint16_t>(local.tm_hour * 60U + local.tm_min);
+  for (uint8_t i = 0; i < 3; ++i) {
+    if (minuteInRange(minute, Config::shiftStartMinutes(i), Config::shiftEndMinutes(i))) return i + 1;
+  }
+  return 0;
+}
+
+uint32_t scheduledElapsedSeconds(uint16_t shiftId) {
+  if (shiftId < 1 || shiftId > 3 || !TimeManager::synchronized()) return 0;
+  const time_t now = TimeManager::now();
+  struct tm local;
+  if (!localtime_r(&now, &local)) return 0;
+
+  const uint16_t startMinute = Config::shiftStartMinutes(shiftId - 1);
+  const uint16_t endMinute = Config::shiftEndMinutes(shiftId - 1);
+  const uint16_t currentMinute = static_cast<uint16_t>(local.tm_hour * 60U + local.tm_min);
+  int32_t elapsedMinutes = 0;
+
+  if (startMinute < endMinute) {
+    elapsedMinutes = static_cast<int32_t>(currentMinute) - startMinute;
+  } else {
+    elapsedMinutes = currentMinute >= startMinute
+                         ? static_cast<int32_t>(currentMinute) - startMinute
+                         : static_cast<int32_t>(currentMinute) + 1440 - startMinute;
+  }
+
+  if (elapsedMinutes < 0) elapsedMinutes = 0;
+  return static_cast<uint32_t>(elapsedMinutes) * 60UL + static_cast<uint32_t>(local.tm_sec);
+}
+
+void syncOeeScheduleTime() {
+  if (!Config::shiftScheduleValid() || !TimeManager::synchronized()) return;
+  OEEManager::setScheduledShiftElapsedSeconds(scheduledElapsedSeconds(gShift.shiftId));
+}
+
 void completeCurrentShift(bool archiveCsv) {
   refreshCounters();
+  syncOeeScheduleTime();
   const OEESnapshot oee = OEEManager::snapshot();
   const uint32_t endedAtEpoch = static_cast<uint32_t>(TimeManager::now());
 
@@ -91,22 +136,7 @@ void resetBaselines() {
   gShift.startedAtEpoch = static_cast<uint32_t>(TimeManager::now());
   OEEManager::resetShift();
   OEEManager::setTargetQuantity(gShift.targetQuantity);
-}
-
-bool minuteInRange(uint16_t minute, uint16_t start, uint16_t end) {
-  return start < end ? (minute >= start && minute < end)
-                     : (minute >= start || minute < end);
-}
-
-uint16_t scheduledShiftId() {
-  const time_t now = TimeManager::now();
-  struct tm local;
-  if (!localtime_r(&now, &local)) return 0;
-  const uint16_t minute = static_cast<uint16_t>(local.tm_hour * 60U + local.tm_min);
-  for (uint8_t i = 0; i < 3; ++i) {
-    if (minuteInRange(minute, Config::shiftStartMinutes(i), Config::shiftEndMinutes(i))) return i + 1;
-  }
-  return 0;
+  syncOeeScheduleTime();
 }
 }
 
@@ -119,6 +149,7 @@ void ShiftManager::begin() {
 
 void ShiftManager::update() {
   refreshCounters();
+  syncOeeScheduleTime();
   if (!Config::shiftScheduleValid() || !TimeManager::synchronized() || millis() - gLastScheduleCheckMs < 1000UL) return;
   gLastScheduleCheckMs = millis();
   const uint16_t expected = scheduledShiftId();
@@ -168,10 +199,12 @@ void ShiftManager::restoreRuntime(const ShiftSnapshot &state, uint32_t totalProd
   gBaseReject = totalReject >= state.reject ? totalReject - state.reject : 0;
   gScheduleInitialized = true;
   OEEManager::setTargetQuantity(gShift.targetQuantity);
+  syncOeeScheduleTime();
 }
 
 ShiftSnapshot ShiftManager::snapshot() {
   refreshCounters();
+  syncOeeScheduleTime();
   return gShift;
 }
 
