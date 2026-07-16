@@ -1,0 +1,67 @@
+{
+  "template": "DOP107CV_Base.dop.dpa",
+  "dopsoft_payload": "Delta-HMI Screen Editor DOP V1010",
+  "target": {
+    "model": "DOP-107CV",
+    "resolution": {
+      "width": 800,
+      "height": 480
+    }
+  },
+  "geometry_record_count": 5,
+  "records": [
+    {
+      "index": 0,
+      "payload_offset_hex": "0x4215",
+      "x": 58,
+      "y": 78,
+      "width": 87,
+      "height": 84,
+      "semantic_type": "unmapped"
+    },
+    {
+      "index": 1,
+      "payload_offset_hex": "0x4868",
+      "x": 281,
+      "y": 75,
+      "width": 93,
+      "height": 74,
+      "semantic_type": "unmapped"
+    },
+    {
+      "index": 2,
+      "payload_offset_hex": "0x4E51",
+      "x": 482,
+      "y": 74,
+      "width": 102,
+      "height": 76,
+      "semantic_type": "unmapped"
+    },
+    {
+      "index": 3,
+      "payload_offset_hex": "0x53BF",
+      "x": 58,
+      "y": 269,
+      "width": 167,
+      "height": 53,
+      "semantic_type": "unmapped"
+    },
+    {
+      "index": 4,
+      "payload_offset_hex": "0x5882",
+      "x": 606,
+      "y": 388,
+      "width": 174,
+      "height": 82,
+      "semantic_type": "unmapped"
+    }
+  ],
+  "status": "geometry-inventory-confirmed",
+  "next_mapping": [
+    "object type",
+    "caption text",
+    "Modbus register address",
+    "screen navigation action",
+    "state colors and formatting"
+  ]
+}
