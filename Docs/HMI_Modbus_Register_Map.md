@@ -12,13 +12,40 @@
 - UART0 is reserved for Modbus RTU.
 - Diagnostic logging uses UART1 TX-only on D4 / GPIO2.
 
-The register addresses below are zero-based Modbus holding-register offsets. Some HMI software displays the same offset as 40001 + offset.
+Holding-register addresses are zero-based internally. DOPSoft normally displays offset 0 as 40001. Coil addresses are also zero-based internally; DOPSoft normally displays coil offset 0 as 00001.
 
-## HMI writes to AFMS
+## Preferred loss-command coils
+
+Use these coils for the 16 DOPSoft loss-selection buttons. Configure each button as **Set ON / Bit Set**. AFMS consumes and resets the coil automatically, so a Momentary Write object is not required.
+
+| Loss code | Coil offset | DOPSoft display | Purpose |
+|---:|---:|---:|---|
+| 1 | 0 | 00001 | Planned shutdown |
+| 2 | 1 | 00002 | Loss 2 |
+| 3 | 2 | 00003 | Loss 3 |
+| 4 | 3 | 00004 | Loss 4 |
+| 5 | 4 | 00005 | Loss 5 |
+| 6 | 5 | 00006 | Loss 6 |
+| 7 | 6 | 00007 | Loss 7 |
+| 8 | 7 | 00008 | Loss 8 |
+| 9 | 8 | 00009 | Loss 9 |
+| 10 | 9 | 00010 | Loss 10 |
+| 11 | 10 | 00011 | Loss 11 |
+| 12 | 11 | 00012 | Loss 12 |
+| 13 | 12 | 00013 | Loss 13 |
+| 14 | 13 | 00014 | Loss 14 |
+| 15 | 14 | 00015 | Loss 15 |
+| 16 | 15 | 00016 | Loss 16 |
+
+AFMS supports Modbus function 01 (Read Coils), function 05 (Write Single Coil), and function 15 (Write Multiple Coils). If more than one loss coil is ON in the same processing cycle, AFMS accepts only the lowest-numbered asserted loss and clears all asserted loss coils.
+
+A loss command is accepted only while the machine is in Loss Required state and the alarm is active. One loss is captured per idle event. After acceptance, the alarm remains cleared until a new production pulse starts another cycle and a later idle event occurs.
+
+## HMI writes to AFMS holding registers
 
 | Offset | 4xxxx display | Name | Format |
 |---:|---:|---|---|
-| 0 | 40001 | Loss code | UINT16, 1-16 |
+| 0 | 40001 | Legacy loss code command | UINT16, 1-16; compatibility only |
 | 1 | 40002 | Cycle time | UINT16 seconds |
 | 2 | 40003 | Target quantity | UINT16 |
 | 3 | 40004 | Operator ID | UINT16 |
@@ -27,8 +54,9 @@ The register addresses below are zero-based Modbus holding-register offsets. Som
 | 6 | 40007 | Part number low word | UINT16 |
 | 7 | 40008 | Part number high word | UINT16 |
 | 8-15 | 40009-40016 | Part name | 16 ASCII characters, two per register |
+| 94 | 40095 | Loss code alias | UINT16, 1-16; compatibility only |
 
-Only offsets 0-15 are writable. All status registers are protected against Modbus writes.
+Offsets 0-15 and offset 94 are writable. All other holding registers are read-only. For DOPSoft loss buttons, use coils 00001-00016 rather than 40001 or 40095.
 
 ## HMI reads from AFMS
 
@@ -88,6 +116,20 @@ Only offsets 0-15 are writable. All status registers are protected against Modbu
 | 92-93 | 40093-40094 | Adjusted target remaining | UINT32, low word first |
 
 Registers 40079-40080 are reserved for future use.
+
+## Loss-capture verification sequence
+
+1. Generate at least one valid production pulse.
+2. Wait for cycle time to expire. Register 40017 becomes 2 (Idle).
+3. Wait for `loss_alarm_delay_seconds`. Register 40017 becomes 3 and 40026 becomes 1.
+4. Press one loss button using coil 00001-00016.
+5. Register 40090 becomes 1 when accepted. Register 40087 shows the selected code.
+6. Registers 40088-40089 show the captured duration in seconds.
+7. Register 40026 returns to 0 and 40017 returns to 2 while the machine remains stopped.
+8. Additional loss-button presses during the same idle event are rejected and do not create duplicate loss records.
+9. The next valid production pulse starts a new cycle and production counting resumes.
+
+During Loss Required, production pulses are blocked and do not increase registers 40018-40019.
 
 ## Adjusted target rule
 
