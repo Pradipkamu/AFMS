@@ -12,12 +12,8 @@ uint8_t gFrame[128];
 uint8_t gLength = 0;
 uint32_t gLastByteUs = 0;
 
-// Coils 0..15 are one-shot HMI loss commands for Loss 1..16.
 constexpr uint16_t kCoilCount = 16;
 bool gCoils[kCoilCount] = {false};
-
-// Holding-register offsets 0..15 are HMI command registers.
-// Offset 94 (40095) remains a compatibility alias for loss command offset 0.
 constexpr uint16_t kWritableRegisterCount = 16;
 constexpr uint16_t kLossCommandOffset = 0;
 constexpr uint16_t kLossCommandAliasOffset = 94;
@@ -36,6 +32,14 @@ bool writableRange(uint16_t address, uint16_t quantity) {
 void storeRegister(uint16_t address, uint16_t value) {
   gRegisters[address] = value;
   if (address == kLossCommandAliasOffset) gRegisters[kLossCommandOffset] = value;
+}
+
+void storeCoil(uint16_t address, bool value) {
+  if (address >= kCoilCount) return;
+  gCoils[address] = value;
+  if (value && gRegisters && gRegisters[kLossCommandOffset] == 0) {
+    gRegisters[kLossCommandOffset] = static_cast<uint16_t>(address + 1U);
+  }
 }
 
 uint16_t crc16(const uint8_t *data, uint16_t length) {
@@ -105,7 +109,7 @@ void processFrame() {
       exception(functionCode, 0x02);
       return;
     }
-    gCoils[address] = quantityOrValue == 0xFF00U;
+    storeCoil(address, quantityOrValue == 0xFF00U);
     uint8_t reply[8];
     memcpy(reply, gFrame, 6);
     sendFrame(reply, 6);
@@ -128,7 +132,8 @@ void processFrame() {
       return;
     }
     for (uint16_t i = 0; i < quantity; ++i) {
-      gCoils[address + i] = (gFrame[7 + i / 8U] & static_cast<uint8_t>(1U << (i % 8U))) != 0;
+      storeCoil(address + i,
+                (gFrame[7 + i / 8U] & static_cast<uint8_t>(1U << (i % 8U))) != 0);
     }
     uint8_t reply[8] = {gSlaveId, functionCode, gFrame[2], gFrame[3], gFrame[4], gFrame[5], 0, 0};
     sendFrame(reply, 6);
