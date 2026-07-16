@@ -15,6 +15,7 @@
 namespace {
 bool gReady = false;
 bool gHasProductionPulse = false;
+bool gLossMonitoringActive = false;
 MachineState gState = MachineState::Ready;
 bool gWasIdle = false;
 bool gWasAlarmActive = false;
@@ -22,6 +23,14 @@ bool gLossClassifiedForCurrentIdle = false;
 uint32_t gLossStartIdleSeconds = 0;
 uint16_t gLastAcceptedLossCode = 0;
 uint32_t gLastLossDurationSeconds = 0;
+
+void restartLossMonitoring(uint32_t nowMs) {
+  CycleManager::onProduction(nowMs);  // Restart cycle-time reference without adding production.
+  IdleManager::onProduction();
+  gLossMonitoringActive = true;
+  gLossClassifiedForCurrentIdle = false;
+  gWasIdle = false;
+}
 }
 
 void MachineEngine::begin() {
@@ -39,10 +48,11 @@ void MachineEngine::begin() {
   gState = MachineState::Ready;
   gReady = true;
   gHasProductionPulse = false;
-  gLossClassifiedForCurrentIdle = false;
+  restartLossMonitoring(millis());
   EventBus::publish(EventType::MachineReady);
-  Logger::info(String(F("[LOSS] Capture alarm activates after ")) +
+  Logger::info(String(F("[LOSS] Capture alarm activates after cycle time + ")) +
                Config::lossAlarmDelaySeconds() + F(" idle seconds"));
+  Logger::info(F("[LOSS] Monitoring started immediately at system boot"));
   Logger::info(F("Machine engine ready"));
 }
 
@@ -51,6 +61,7 @@ void MachineEngine::update() {
 
   while (ProductionManager::consumePulse()) {
     gHasProductionPulse = true;
+    gLossMonitoringActive = true;
     gLossClassifiedForCurrentIdle = false;
     CycleManager::onProduction(nowMs);
     IdleManager::onProduction();
@@ -62,7 +73,7 @@ void MachineEngine::update() {
     EventBus::publish(EventType::RejectPulse, static_cast<int32_t>(RejectManager::total()));
   }
 
-  if (gHasProductionPulse) {
+  if (gLossMonitoringActive) {
     IdleManager::update(
         CycleManager::cycleExpired(nowMs),
         nowMs,
@@ -70,19 +81,18 @@ void MachineEngine::update() {
         CycleManager::cycleTimeMs());
   }
 
-  const bool idleNow = gHasProductionPulse && IdleManager::idle();
+  const bool idleNow = gLossMonitoringActive && IdleManager::idle();
   if (idleNow && !gWasIdle) {
     gLossStartIdleSeconds = IdleManager::idleSeconds();
     gLossClassifiedForCurrentIdle = false;
     gState = MachineState::Idle;
     EventBus::publish(EventType::IdleStarted);
   } else if (!idleNow && gWasIdle) {
-    gLossClassifiedForCurrentIdle = false;
     EventBus::publish(EventType::IdleEnded);
   }
   gWasIdle = idleNow;
 
-  if (gHasProductionPulse && IdleManager::alarmDue() && !gLossClassifiedForCurrentIdle) {
+  if (gLossMonitoringActive && IdleManager::alarmDue() && !gLossClassifiedForCurrentIdle) {
     if (!AlarmManager::active()) {
       AlarmManager::set(true);
       ProductionManager::setEnabled(false);
@@ -96,6 +106,7 @@ void MachineEngine::update() {
   if (!alarmNow && gWasAlarmActive) EventBus::publish(EventType::AlarmCleared);
   gWasAlarmActive = alarmNow;
 
+  // Until a real production pulse arrives, startup/post-loss grace remains non-running OEE time.
   const bool oeeDowntime = !gHasProductionPulse || idleNow || alarmNow;
   OEEManager::update(oeeDowntime, ProductionManager::total(), RejectManager::total());
 }
@@ -137,11 +148,13 @@ bool MachineEngine::acknowledgeLossCode(uint16_t lossCode) {
   gLossClassifiedForCurrentIdle = true;
   AlarmManager::clear();
   ProductionManager::setEnabled(true);
-  gState = IdleManager::idle() ? MachineState::Idle : MachineState::Running;
+  gHasProductionPulse = false;
+  restartLossMonitoring(millis());
+  gState = MachineState::Ready;
   gLastAcceptedLossCode = lossCode;
   gLastLossDurationSeconds = duration;
   TelegramClient::queueLoss(lossCode, duration);
-  Logger::info(F("[LOSS] Loss captured once; production counting re-enabled"));
+  Logger::info(F("[LOSS] Loss captured; monitoring restarted immediately"));
   return true;
 }
 
