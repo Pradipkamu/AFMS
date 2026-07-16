@@ -78,5 +78,13 @@ constexpr uint16_t StatusHmiHeartbeatEcho = 75;
 constexpr uint16_t StatusHmiHeartbeatAgeSeconds = 76;
 constexpr uint16_t StatusLastModbusAgeMs = 77;
 
-constexpr uint16_t RegisterCount = 80;
+// Schedule-based OEE timing. All values are UINT32 seconds, low word first.
+constexpr uint16_t StatusScheduledShiftElapsedLow = 80;
+constexpr uint16_t StatusScheduledShiftElapsedHigh = 81;
+constexpr uint16_t StatusPlannedShutdownLow = 82;
+constexpr uint16_t StatusPlannedShutdownHigh = 83;
+constexpr uint16_t StatusPlannedProductionLow = 84;
+constexpr uint16_t StatusPlannedProductionHigh = 85;
+
+constexpr uint16_t RegisterCount = 86;
 }
