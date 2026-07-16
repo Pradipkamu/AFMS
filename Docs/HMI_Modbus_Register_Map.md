@@ -48,14 +48,14 @@ Only offsets 0-15 are writable. All status registers are protected against Modbu
 | 33 | 40034 | Performance | permille, 1000 = 100.0% |
 | 34 | 40035 | Quality | permille, 1000 = 100.0% |
 | 35 | 40036 | OEE | permille, 1000 = 100.0% |
-| 36-37 | 40037-40038 | Target quantity | UINT32, low word first |
+| 36-37 | 40037-40038 | Original target quantity | UINT32, low word first |
 | 38 | 40039 | Active shift ID | UINT16 |
 | 39-40 | 40040-40041 | Operator ID | UINT32, low word first |
 | 41-42 | 40042-40043 | Part number | UINT32, low word first |
 | 43-44 | 40044-40045 | Shift production | UINT32, low word first |
 | 45-46 | 40046-40047 | Shift reject | UINT32, low word first |
 | 47-48 | 40048-40049 | Shift good | UINT32, low word first |
-| 49-50 | 40050-40051 | Target remaining | UINT32, low word first |
+| 49-50 | 40050-40051 | Original target remaining | UINT32, low word first |
 | 51 | 40052 | Wi-Fi connected | 0/1 |
 | 52 | 40053 | Google connection confirmed | 0/1; becomes 1 after first successful upload |
 | 53 | 40054 | Telegram bot connected | 0/1 |
@@ -81,8 +81,25 @@ Only offsets 0-15 are writable. All status registers are protected against Modbu
 | 80-81 | 40081-40082 | Scheduled shift elapsed time | UINT32 seconds, low word first |
 | 82-83 | 40083-40084 | Planned shutdown time | UINT32 seconds, low word first; Loss 1 only |
 | 84-85 | 40085-40086 | Planned production time | UINT32 seconds, low word first; scheduled elapsed minus Loss 1 |
+| 86 | 40087 | Last accepted loss code | UINT16, 1-16 |
+| 87-88 | 40088-40089 | Last loss duration | UINT32 seconds, low word first |
+| 89 | 40090 | Loss command result | 0 none, 1 accepted, 2 rejected |
+| 90-91 | 40091-40092 | Adjusted target excluding planned shutdown | UINT32, low word first |
+| 92-93 | 40093-40094 | Adjusted target remaining | UINT32, low word first |
 
 Registers 40079-40080 are reserved for future use.
+
+## Adjusted target rule
+
+The original target remains unchanged at 40037-40038. AFMS calculates the adjusted target using the full configured duration of the active shift:
+
+`Adjusted target = Original target x (Configured shift duration - Loss 1 duration) / Configured shift duration`
+
+The result is rounded down to a whole component. Losses 2-16 do not reduce the target.
+
+`Adjusted target remaining = max(Adjusted target - Shift production, 0)`
+
+Example: for an 8-hour shift, original target 480, and one hour recorded as Loss 1, the adjusted target is 420.
 
 ## OEE time relationship
 
