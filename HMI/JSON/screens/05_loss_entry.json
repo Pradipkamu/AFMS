@@ -1,0 +1,44 @@
+{
+  "screen": {
+    "number": 5,
+    "name": "Loss Entry",
+    "title": "AFMS LOSS ENTRY",
+    "resolution": {"width": 800, "height": 480},
+    "background": "#101820",
+    "refresh_ms": 250,
+    "objects": [
+      {"id":"title","type":"text","x":18,"y":8,"width":330,"height":34,"text":"LOSS ENTRY","font_size":24,"foreground":"#FFFFFF"},
+      {"id":"machine_state","type":"numeric_state_display","x":430,"y":8,"width":170,"height":34,"tag":"StatusMachineState","register":16,"states":{"0":"STOPPED","1":"RUNNING","2":"IDLE","3":"ALARM"},"font_size":21,"align":"center"},
+      {"id":"comm_lamp","type":"word_state_lamp","x":654,"y":8,"width":36,"height":30,"tag":"StatusCommunication","register":26,"states":{"0":"#D62828","1":"#2A9D8F"}},
+      {"id":"comm_text","type":"text","x":696,"y":10,"width":86,"height":28,"text":"RS-485","font_size":17,"foreground":"#FFFFFF"},
+
+      {"id":"entry_panel","type":"panel","x":18,"y":62,"width":350,"height":304,"fill":"#1F2A33","border":"#3A506B"},
+      {"id":"entry_title","type":"text","x":38,"y":82,"width":310,"height":34,"text":"ENTER LOSS CODE","font_size":23,"align":"center","foreground":"#FFFFFF"},
+      {"id":"loss_input","type":"numeric_input","x":72,"y":136,"width":242,"height":72,"tag":"CommandLossCode","register":0,"minimum":0,"maximum":9999,"format":"unsigned_16","font_size":38,"align":"center"},
+      {"id":"instruction_1","type":"text","x":42,"y":228,"width":302,"height":30,"text":"0 = CLEAR / NO LOSS","font_size":18,"align":"center","foreground":"#BFC9D4"},
+      {"id":"instruction_2","type":"text","x":42,"y":266,"width":302,"height":30,"text":"ENTER APPROVED LOSS CODE","font_size":17,"align":"center","foreground":"#BFC9D4"},
+      {"id":"alarm_lamp","type":"word_state_lamp","x":92,"y":316,"width":42,"height":30,"tag":"StatusAlarm","register":25,"states":{"0":"#34495E","1":"#D62828"}},
+      {"id":"alarm_text","type":"text","x":148,"y":314,"width":170,"height":32,"text":"ACTIVE ALARM","font_size":20,"foreground":"#FFFFFF"},
+
+      {"id":"context_panel","type":"panel","x":388,"y":62,"width":394,"height":304,"fill":"#1F2A33","border":"#3A506B"},
+      {"id":"context_title","type":"text","x":408,"y":82,"width":354,"height":34,"text":"CURRENT PRODUCTION CONTEXT","font_size":21,"align":"center","foreground":"#FFFFFF"},
+      {"id":"shift_label","type":"text","x":416,"y":132,"width":150,"height":30,"text":"SHIFT","font_size":18,"foreground":"#BFC9D4"},
+      {"id":"shift_value","type":"numeric_display","x":608,"y":128,"width":130,"height":36,"tag":"StatusShift","register":38,"font_size":24,"align":"right"},
+      {"id":"operator_label","type":"text","x":416,"y":176,"width":150,"height":30,"text":"OPERATOR","font_size":18,"foreground":"#BFC9D4"},
+      {"id":"operator_value","type":"numeric_display_32","x":596,"y":172,"width":142,"height":36,"tag_low":"StatusOperatorIdLow","tag_high":"StatusOperatorIdHigh","register_low":39,"register_high":40,"font_size":22,"align":"right","format":"unsigned"},
+      {"id":"part_label","type":"text","x":416,"y":220,"width":150,"height":30,"text":"PART NUMBER","font_size":18,"foreground":"#BFC9D4"},
+      {"id":"part_value","type":"numeric_display_32","x":596,"y":216,"width":142,"height":36,"tag_low":"StatusPartNumberLow","tag_high":"StatusPartNumberHigh","register_low":41,"register_high":42,"font_size":20,"align":"right","format":"unsigned"},
+      {"id":"idle_label","type":"text","x":416,"y":264,"width":150,"height":30,"text":"IDLE TIME","font_size":18,"foreground":"#BFC9D4"},
+      {"id":"idle_value","type":"duration_display_32","x":576,"y":260,"width":162,"height":36,"tag_low":"StatusIdleSecondsLow","tag_high":"StatusIdleSecondsHigh","register_low":23,"register_high":24,"format":"hh:mm:ss","font_size":22,"align":"right"},
+      {"id":"downtime_label","type":"text","x":416,"y":308,"width":150,"height":30,"text":"DOWNTIME","font_size":18,"foreground":"#BFC9D4"},
+      {"id":"downtime_value","type":"duration_display_32","x":576,"y":304,"width":162,"height":36,"tag_low":"StatusDowntimeSecondsLow","tag_high":"StatusDowntimeSecondsHigh","register_low":30,"register_high":31,"format":"hh:mm:ss","font_size":22,"align":"right"},
+
+      {"id":"nav_dashboard","type":"screen_change_button","x":18,"y":392,"width":118,"height":64,"text":"DASHBOARD","target_screen":1},
+      {"id":"nav_production","type":"screen_change_button","x":146,"y":392,"width":118,"height":64,"text":"PRODUCTION","target_screen":2},
+      {"id":"nav_oee","type":"screen_change_button","x":274,"y":392,"width":92,"height":64,"text":"OEE","target_screen":3},
+      {"id":"nav_shift","type":"screen_change_button","x":376,"y":392,"width":102,"height":64,"text":"SHIFT","target_screen":4},
+      {"id":"nav_connect","type":"screen_change_button","x":488,"y":392,"width":132,"height":64,"text":"CONNECT","target_screen":6},
+      {"id":"nav_diagnostics","type":"screen_change_button","x":630,"y":392,"width":152,"height":64,"text":"DIAGNOSTICS","target_screen":7}
+    ]
+  }
+}
