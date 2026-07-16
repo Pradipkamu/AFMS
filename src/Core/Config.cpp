@@ -8,6 +8,10 @@ namespace {
 constexpr const char *kConfigPath = "/machine.json";
 constexpr const char *kTempPath = "/machine.json.tmp";
 constexpr const char *kBackupPath = "/machine.json.bak";
+constexpr uint32_t kDefaultLossAlarmDelaySeconds = 600UL;
+constexpr uint32_t kMinLossAlarmDelaySeconds = 1UL;
+constexpr uint32_t kMaxLossAlarmDelaySeconds = 86400UL;
+
 char gMachineId[16] = "MCH001";
 char gMachineName[32] = "PRESS-01";
 char gWifiSsid[33] = "";
@@ -20,6 +24,7 @@ char gShiftEnd[3][6] = {"14:00", "22:00", "06:00"};
 uint16_t gShiftStartMinutes[3] = {360, 840, 1320};
 uint16_t gShiftEndMinutes[3] = {840, 1320, 360};
 bool gShiftScheduleValid = false;
+uint32_t gLossAlarmDelaySeconds = kDefaultLossAlarmDelaySeconds;
 
 void copyValue(const char *value, char *dest, size_t size) {
   strlcpy(dest, value ? value : "", size);
@@ -61,6 +66,25 @@ bool loadDocument(DynamicJsonDocument &document) {
   file.close();
   return !error;
 }
+
+uint32_t readLossAlarmDelaySeconds(const JsonDocument &document) {
+  uint32_t value = kDefaultLossAlarmDelaySeconds;
+  if (document.containsKey("loss_alarm_delay_seconds")) {
+    value = document["loss_alarm_delay_seconds"].as<uint32_t>();
+  } else if (document.containsKey("idle_delay_seconds")) {
+    value = document["idle_delay_seconds"].as<uint32_t>();
+    Logger::warn(F("[LOSS] Legacy idle_delay_seconds detected; use loss_alarm_delay_seconds"));
+  } else if (document.containsKey("idleDelaySeconds")) {
+    value = document["idleDelaySeconds"].as<uint32_t>();
+    Logger::warn(F("[LOSS] Legacy idleDelaySeconds detected; use loss_alarm_delay_seconds"));
+  }
+
+  if (value < kMinLossAlarmDelaySeconds || value > kMaxLossAlarmDelaySeconds) {
+    Logger::warn(F("[LOSS] Alarm delay out of range; using 600 seconds"));
+    return kDefaultLossAlarmDelaySeconds;
+  }
+  return value;
+}
 }
 
 bool Config::load() {
@@ -68,6 +92,7 @@ bool Config::load() {
   if (!loadDocument(document)) {
     Logger::warn(F("Config file missing or invalid; using defaults"));
     gShiftScheduleValid = false;
+    gLossAlarmDelaySeconds = kDefaultLossAlarmDelaySeconds;
     return false;
   }
 
@@ -84,15 +109,17 @@ bool Config::load() {
     copyValue(document[(prefix + F("_end")).c_str()] | gShiftEnd[i], gShiftEnd[i], sizeof(gShiftEnd[i]));
   }
 
+  gLossAlarmDelaySeconds = readLossAlarmDelaySeconds(document);
   gShiftScheduleValid = validateShiftSchedule();
   Logger::info(String(F("Config loaded for ")) + gMachineId);
+  Logger::info(String(F("[LOSS] Alarm delay: ")) + gLossAlarmDelaySeconds + F(" sec"));
   if (!gShiftScheduleValid) Logger::error(F("[SHIFT] Invalid shift configuration; automatic shifts disabled"));
   return true;
 }
 
 bool Config::save() {
   DynamicJsonDocument document(6144);
-  loadDocument(document);  // Preserve every existing and future field.
+  loadDocument(document);
 
   document["machine_id"] = gMachineId;
   document["machine_name"] = gMachineName;
@@ -100,6 +127,9 @@ bool Config::save() {
   document["wifi_password"] = gWifiPassword;
   document["google_web_app_url"] = gGoogleWebAppUrl;
   document["api_token"] = gApiToken;
+  document["loss_alarm_delay_seconds"] = gLossAlarmDelaySeconds;
+  document.remove("idle_delay_seconds");
+  document.remove("idleDelaySeconds");
   for (uint8_t i = 0; i < 3; ++i) {
     String prefix = String(F("shift_")) + (i + 1);
     document[(prefix + F("_name")).c_str()] = gShiftName[i];
@@ -158,3 +188,4 @@ const char *Config::shiftEnd(uint8_t index) { return index < 3 ? gShiftEnd[index
 uint16_t Config::shiftStartMinutes(uint8_t index) { return index < 3 ? gShiftStartMinutes[index] : 0; }
 uint16_t Config::shiftEndMinutes(uint8_t index) { return index < 3 ? gShiftEndMinutes[index] : 0; }
 bool Config::shiftScheduleValid() { return gShiftScheduleValid; }
+uint32_t Config::lossAlarmDelaySeconds() { return gLossAlarmDelaySeconds; }
