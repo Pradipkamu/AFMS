@@ -12,6 +12,7 @@
 #include "../Machine/CycleManager.h"
 #include "../Machine/OEEManager.h"
 #include "../Machine/ShiftManager.h"
+#include "../Core/Config.h"
 #include "../Core/HardwareConfig.h"
 #include "../Core/Logger.h"
 #include <ESP8266WiFi.h>
@@ -29,10 +30,12 @@ void write32(uint16_t lowRegister, uint32_t value) {
   gRegisters[lowRegister] = static_cast<uint16_t>(value & 0xFFFFU);
   gRegisters[lowRegister + 1] = static_cast<uint16_t>(value >> 16U);
 }
+
 uint32_t read32(uint16_t lowRegister) {
   return static_cast<uint32_t>(gRegisters[lowRegister]) |
          (static_cast<uint32_t>(gRegisters[lowRegister + 1]) << 16U);
 }
+
 void readPartName(char *destination, size_t size) {
   if (!destination || size == 0) return;
   size_t position = 0;
@@ -47,7 +50,30 @@ void readPartName(char *destination, size_t size) {
   }
   destination[position] = '\0';
 }
-uint16_t clamp16(uint32_t value) { return value > 0xFFFFUL ? 0xFFFFU : static_cast<uint16_t>(value); }
+
+uint16_t clamp16(uint32_t value) {
+  return value > 0xFFFFUL ? 0xFFFFU : static_cast<uint16_t>(value);
+}
+
+uint32_t shiftDurationSeconds(uint16_t shiftId) {
+  if (!Config::shiftScheduleValid() || shiftId < 1 || shiftId > 3) return 0;
+  const uint16_t start = Config::shiftStartMinutes(shiftId - 1);
+  const uint16_t end = Config::shiftEndMinutes(shiftId - 1);
+  const uint16_t durationMinutes = end > start ? end - start : static_cast<uint16_t>(1440U - start + end);
+  return static_cast<uint32_t>(durationMinutes) * 60UL;
+}
+
+uint32_t adjustedTarget(uint32_t originalTarget,
+                        uint16_t shiftId,
+                        uint32_t plannedShutdownSeconds) {
+  const uint32_t shiftSeconds = shiftDurationSeconds(shiftId);
+  if (originalTarget == 0 || shiftSeconds == 0) return originalTarget;
+  const uint32_t productiveSeconds = plannedShutdownSeconds < shiftSeconds
+      ? shiftSeconds - plannedShutdownSeconds
+      : 0;
+  return static_cast<uint32_t>((static_cast<uint64_t>(originalTarget) * productiveSeconds) /
+                               shiftSeconds);
+}
 }
 
 void HMIManager::begin() {
@@ -146,7 +172,8 @@ void HMIManager::update() {
   write32(HMIRegister::StatusShiftProductionLow, shiftData.production);
   write32(HMIRegister::StatusShiftRejectLow, shiftData.reject);
   write32(HMIRegister::StatusShiftGoodLow, shiftData.good);
-  write32(HMIRegister::StatusTargetRemainingLow, shiftData.targetQuantity > shiftData.production ? shiftData.targetQuantity - shiftData.production : 0);
+  write32(HMIRegister::StatusTargetRemainingLow,
+          shiftData.targetQuantity > shiftData.production ? shiftData.targetQuantity - shiftData.production : 0);
 
   gRegisters[HMIRegister::StatusWifiConnected] = WiFiManager::connected() ? 1 : 0;
   gRegisters[HMIRegister::StatusGoogleConnected] = CloudManager::uploadSuccessCount() > 0 ? 1 : 0;
@@ -158,7 +185,9 @@ void HMIManager::update() {
   write32(HMIRegister::StatusTelegramFailureLow, TelegramClient::failureCount());
   gRegisters[HMIRegister::StatusModbusErrorCount] = static_cast<uint16_t>(ModbusSlave::errorCount() & 0xFFFFU);
   write32(HMIRegister::StatusModbusRequestLow, ModbusSlave::requestCount());
-  gRegisters[HMIRegister::StatusWifiRssi] = WiFiManager::connected() ? static_cast<uint16_t>(static_cast<int16_t>(WiFi.RSSI())) : 0;
+  gRegisters[HMIRegister::StatusWifiRssi] = WiFiManager::connected()
+      ? static_cast<uint16_t>(static_cast<int16_t>(WiFi.RSSI()))
+      : 0;
   gRegisters[HMIRegister::StatusTimeSynchronized] = TimeManager::synchronized() ? 1 : 0;
 
   const time_t now = TimeManager::now();
@@ -171,16 +200,28 @@ void HMIManager::update() {
     gRegisters[HMIRegister::StatusMinute] = static_cast<uint16_t>(localTime.tm_min);
     gRegisters[HMIRegister::StatusSecond] = static_cast<uint16_t>(localTime.tm_sec);
   }
+
   gRegisters[HMIRegister::StatusCycleTimeSeconds] = static_cast<uint16_t>(CycleManager::cycleTimeMs() / 1000UL);
   gRegisters[HMIRegister::StatusHmiHeartbeatEcho] = gLastHmiHeartbeat;
   gRegisters[HMIRegister::StatusHmiHeartbeatAgeSeconds] = clamp16((millis() - gLastHmiHeartbeatMs) / 1000UL);
   const uint32_t lastRequestMs = ModbusSlave::lastRequestMs();
-  gRegisters[HMIRegister::StatusLastModbusAgeMs] = lastRequestMs == 0 ? 0xFFFFU : clamp16(millis() - lastRequestMs);
+  gRegisters[HMIRegister::StatusLastModbusAgeMs] = lastRequestMs == 0
+      ? 0xFFFFU
+      : clamp16(millis() - lastRequestMs);
   write32(HMIRegister::StatusScheduledShiftElapsedLow, oee.scheduledShiftElapsedSeconds);
   write32(HMIRegister::StatusPlannedShutdownLow, oee.plannedShutdownSeconds);
   write32(HMIRegister::StatusPlannedProductionLow, oee.plannedSeconds);
   gRegisters[HMIRegister::StatusLastLossCode] = MachineEngine::lastAcceptedLossCode();
   write32(HMIRegister::StatusLastLossDurationLow, MachineEngine::lastLossDurationSeconds());
+
+  const uint32_t reducedTarget = adjustedTarget(shiftData.targetQuantity,
+                                                shiftData.shiftId,
+                                                oee.plannedShutdownSeconds);
+  const uint32_t reducedRemaining = reducedTarget > shiftData.production
+      ? reducedTarget - shiftData.production
+      : 0;
+  write32(HMIRegister::StatusAdjustedTargetLow, reducedTarget);
+  write32(HMIRegister::StatusAdjustedTargetRemainingLow, reducedRemaining);
 }
 
 bool HMIManager::connected() { return ModbusSlave::connected(); }
