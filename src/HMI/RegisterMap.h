@@ -88,5 +88,8 @@ constexpr uint16_t StatusAdjustedTargetLow = 90;
 constexpr uint16_t StatusAdjustedTargetHigh = 91;
 constexpr uint16_t StatusAdjustedTargetRemainingLow = 92;
 constexpr uint16_t StatusAdjustedTargetRemainingHigh = 93;
-constexpr uint16_t RegisterCount = 94;
+
+// DOPSoft-friendly alias for the loss command. 40001 remains supported.
+constexpr uint16_t CommandLossCodeAlias = 94; // 40095, writable UINT16 1-16
+constexpr uint16_t RegisterCount = 95;
 }
