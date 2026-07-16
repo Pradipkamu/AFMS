@@ -43,7 +43,7 @@ Only offsets 0-15 are writable. All status registers are protected against Modbu
 | 26 | 40027 | Modbus communication active | 0/1 |
 | 27 | 40028 | ESP heartbeat | UINT16 incrementing |
 | 28-29 | 40029-40030 | Run seconds | UINT32, low word first |
-| 30-31 | 40031-40032 | Downtime seconds | UINT32, low word first |
+| 30-31 | 40031-40032 | Unplanned downtime seconds | UINT32, low word first |
 | 32 | 40033 | Availability | permille, 1000 = 100.0% |
 | 33 | 40034 | Performance | permille, 1000 = 100.0% |
 | 34 | 40035 | Quality | permille, 1000 = 100.0% |
@@ -78,6 +78,20 @@ Only offsets 0-15 are writable. All status registers are protected against Modbu
 | 75 | 40076 | HMI heartbeat echo | Last value received at 40006 |
 | 76 | 40077 | HMI heartbeat age | UINT16 seconds since 40006 changed |
 | 77 | 40078 | Last Modbus request age | UINT16 milliseconds; 65535 means none received |
+| 80-81 | 40081-40082 | Scheduled shift elapsed time | UINT32 seconds, low word first |
+| 82-83 | 40083-40084 | Planned shutdown time | UINT32 seconds, low word first; Loss 1 only |
+| 84-85 | 40085-40086 | Planned production time | UINT32 seconds, low word first; scheduled elapsed minus Loss 1 |
+
+Registers 40079-40080 are reserved for future use.
+
+## OEE time relationship
+
+- Scheduled shift elapsed = current time minus configured active-shift start time.
+- Planned shutdown = accumulated duration recorded with Loss code 1.
+- Planned production time = scheduled shift elapsed minus planned shutdown.
+- Unplanned downtime = Losses 2-16 and other OEE downtime.
+- Run time = planned production time minus unplanned downtime.
+- Availability = run time divided by planned production time.
 
 ## Machine state values
 
