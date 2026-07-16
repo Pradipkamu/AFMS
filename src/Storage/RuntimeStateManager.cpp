@@ -3,6 +3,7 @@
 #include "../Machine/RejectManager.h"
 #include "../Machine/ShiftManager.h"
 #include "../Machine/OEEManager.h"
+#include "../Machine/MachineEngine.h"
 #include "../Core/Logger.h"
 #include <LittleFS.h>
 #include <ArduinoJson.h>
@@ -29,7 +30,12 @@ uint32_t mix(uint32_t value, uint32_t item) {
   return (value << 5) | (value >> 27);
 }
 
-uint32_t checksum(uint32_t production, uint32_t reject, const ShiftSnapshot &shift, const OEEPersistentState &oee) {
+uint32_t checksum(uint32_t production,
+                  uint32_t reject,
+                  const ShiftSnapshot &shift,
+                  const OEEPersistentState &oee,
+                  uint16_t lastLossCode,
+                  uint32_t lastLossDurationSeconds) {
   uint32_t value = 0xA5F5022AUL;
   value = mix(value, production);
   value = mix(value, reject);
@@ -46,6 +52,8 @@ uint32_t checksum(uint32_t production, uint32_t reject, const ShiftSnapshot &shi
   value = mix(value, oee.productionBaseline);
   value = mix(value, oee.rejectBaseline);
   for (uint8_t i = 0; i < 17; ++i) value = mix(value, oee.lossSeconds[i]);
+  value = mix(value, lastLossCode);
+  value = mix(value, lastLossDurationSeconds);
   for (size_t i = 0; i < sizeof(shift.partName); ++i) value = (value * 33UL) ^ static_cast<uint8_t>(shift.partName[i]);
   return value;
 }
@@ -70,10 +78,11 @@ void loadConfiguration() {
 bool restoreState() {
   File file = LittleFS.open(kStatePath, "r");
   if (!file) return false;
-  DynamicJsonDocument document(4096);
+  DynamicJsonDocument document(4608);
   const DeserializationError error = deserializeJson(document, file);
   file.close();
-  if (error || document["version"].as<uint16_t>() != 2U) return false;
+  const uint16_t version = document["version"] | 0U;
+  if (error || (version != 2U && version != 3U)) return false;
 
   const uint32_t production = document["production"] | 0UL;
   const uint32_t reject = document["reject"] | 0UL;
@@ -97,13 +106,20 @@ bool restoreState() {
   JsonArray losses = document["loss_seconds"].as<JsonArray>();
   for (uint8_t i = 0; i < 17; ++i) oee.lossSeconds[i] = losses.isNull() ? 0UL : (losses[i] | 0UL);
 
+  const uint16_t lastLossCode = version >= 3U ? (document["last_loss_code"] | 0U) : 0U;
+  const uint32_t lastLossDurationSeconds = version >= 3U ? (document["last_loss_duration_seconds"] | 0UL) : 0UL;
   const uint32_t storedChecksum = document["checksum"] | 0UL;
-  if (storedChecksum != checksum(production, reject, shift, oee)) return false;
+  const uint32_t expectedChecksum = version >= 3U
+      ? checksum(production, reject, shift, oee, lastLossCode, lastLossDurationSeconds)
+      : checksum(production, reject, shift, oee, 0, 0);
+  if (storedChecksum != expectedChecksum) return false;
+
   ProductionManager::restore(production);
   RejectManager::restore(reject);
   ShiftManager::restoreRuntime(shift, production, reject);
   OEEManager::restorePersistentState(oee);
   OEEManager::setTargetQuantity(shift.targetQuantity);
+  MachineEngine::restoreLastLoss(lastLossCode, lastLossDurationSeconds);
   gLastSavedChecksum = storedChecksum;
   Logger::info(String(F("[STATE] Restored production=")) + production + F(", reject=") + reject);
   return true;
@@ -132,11 +148,13 @@ bool RuntimeStateManager::saveNow() {
   const uint32_t reject = RejectManager::total();
   const ShiftSnapshot shift = ShiftManager::snapshot();
   const OEEPersistentState oee = OEEManager::persistentState();
-  const uint32_t currentChecksum = checksum(production, reject, shift, oee);
+  const uint16_t lastLossCode = MachineEngine::lastAcceptedLossCode();
+  const uint32_t lastLossDurationSeconds = MachineEngine::lastLossDurationSeconds();
+  const uint32_t currentChecksum = checksum(production, reject, shift, oee, lastLossCode, lastLossDurationSeconds);
   if (currentChecksum == gLastSavedChecksum) return true;
 
-  DynamicJsonDocument document(4096);
-  document["version"] = 2;
+  DynamicJsonDocument document(4608);
+  document["version"] = 3;
   document["production"] = production;
   document["reject"] = reject;
   document["shift_id"] = shift.shiftId;
@@ -154,6 +172,8 @@ bool RuntimeStateManager::saveNow() {
   document["oee_reject_baseline"] = oee.rejectBaseline;
   JsonArray losses = document.createNestedArray("loss_seconds");
   for (uint8_t i = 0; i < 17; ++i) losses.add(oee.lossSeconds[i]);
+  document["last_loss_code"] = lastLossCode;
+  document["last_loss_duration_seconds"] = lastLossDurationSeconds;
   document["checksum"] = currentChecksum;
 
   File file = LittleFS.open(kTempPath, "w");
