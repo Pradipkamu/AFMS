@@ -127,6 +127,7 @@ void HMIManager::update() {
 
   const MachineSnapshot machine = MachineEngine::snapshot();
   const ShiftSnapshot shiftData = ShiftManager::snapshot();
+  const OEESnapshot oee = OEEManager::snapshot();
   gRegisters[HMIRegister::StatusMachineState] = static_cast<uint16_t>(machine.state);
   write32(HMIRegister::StatusProductionLow, machine.totalParts);
   write32(HMIRegister::StatusRejectLow, machine.rejectParts);
@@ -187,6 +188,10 @@ void HMIManager::update() {
   gRegisters[HMIRegister::StatusLastModbusAgeMs] = lastRequestMs == 0
       ? 0xFFFFU
       : clamp16(millis() - lastRequestMs);
+
+  write32(HMIRegister::StatusScheduledShiftElapsedLow, oee.scheduledShiftElapsedSeconds);
+  write32(HMIRegister::StatusPlannedShutdownLow, oee.plannedShutdownSeconds);
+  write32(HMIRegister::StatusPlannedProductionLow, oee.plannedSeconds);
 }
 
 bool HMIManager::connected() { return ModbusSlave::connected(); }
