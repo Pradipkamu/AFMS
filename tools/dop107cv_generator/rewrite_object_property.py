@@ -2,7 +2,7 @@
 """Guarded same-length DOPSoft object-property rewriter.
 
 Supported confirmed property mappings:
-- numeric display/input address (record 0)
+- numeric display/input address (record 0, fixed three decimal digits)
 - four-character ASCII caption (record 1)
 - single-digit command address (record 2)
 - single-digit screen target, stored twice (record 3)
@@ -64,10 +64,15 @@ def geometry_records(payload: bytes) -> list[tuple[int, int, int, int, int]]:
     return records
 
 
-def encode_digits(value: int) -> bytes:
+def encode_digits(value: int, *, width: int | None = None) -> bytes:
     if value < 0:
         raise ValueError("value must be non-negative")
-    return bytes(int(character) ^ DIGIT_XOR for character in str(value))
+    text = str(value)
+    if width is not None:
+        if len(text) > width:
+            raise ValueError(f"value {value} exceeds fixed width {width}")
+        text = text.zfill(width)
+    return bytes(int(character) ^ DIGIT_XOR for character in text)
 
 
 def encode_caption(value: str) -> bytes:
@@ -104,10 +109,8 @@ def rewrite(source: Path, destination: Path, property_type: str, value: str) -> 
 
     if property_type == "numeric_address":
         start = anchor + 177
-        replacement = encode_digits(int(value))
-        if len(replacement) != 2:
-            raise ValueError("numeric address must remain two digits")
-        payload[start : start + 2] = replacement
+        replacement = encode_digits(int(value), width=3)
+        payload[start : start + 3] = replacement
 
     elif property_type == "caption":
         start = anchor + 1047
