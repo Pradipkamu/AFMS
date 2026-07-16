@@ -12,8 +12,12 @@ uint8_t gFrame[128];
 uint8_t gLength = 0;
 uint32_t gLastByteUs = 0;
 
+// Coils 0..15 are one-shot HMI loss commands for Loss 1..16.
+constexpr uint16_t kCoilCount = 16;
+bool gCoils[kCoilCount] = {false};
+
 // Holding-register offsets 0..15 are HMI command registers.
-// Offset 94 (40095) is a DOPSoft-friendly alias for loss command offset 0 (40001).
+// Offset 94 (40095) remains a compatibility alias for loss command offset 0.
 constexpr uint16_t kWritableRegisterCount = 16;
 constexpr uint16_t kLossCommandOffset = 0;
 constexpr uint16_t kLossCommandAliasOffset = 94;
@@ -31,9 +35,7 @@ bool writableRange(uint16_t address, uint16_t quantity) {
 
 void storeRegister(uint16_t address, uint16_t value) {
   gRegisters[address] = value;
-  if (address == kLossCommandAliasOffset) {
-    gRegisters[kLossCommandOffset] = value;
-  }
+  if (address == kLossCommandAliasOffset) gRegisters[kLossCommandOffset] = value;
 }
 
 uint16_t crc16(const uint8_t *data, uint16_t length) {
@@ -63,16 +65,32 @@ void exception(uint8_t functionCode, uint8_t code) {
 
 void processFrame() {
   if (gLength < 8 || gFrame[0] != gSlaveId) return;
-  const uint16_t received = static_cast<uint16_t>(gFrame[gLength - 2]) | static_cast<uint16_t>(gFrame[gLength - 1] << 8U);
+  const uint16_t received = static_cast<uint16_t>(gFrame[gLength - 2]) |
+                            static_cast<uint16_t>(gFrame[gLength - 1] << 8U);
   if (crc16(gFrame, gLength - 2) != received) { ++gErrors; return; }
 
   const uint8_t functionCode = gFrame[1];
   const uint16_t address = static_cast<uint16_t>(gFrame[2] << 8U) | gFrame[3];
   const uint16_t quantityOrValue = static_cast<uint16_t>(gFrame[4] << 8U) | gFrame[5];
 
-  if (functionCode == 0x03) {
+  if (functionCode == 0x01) {
     const uint16_t quantity = quantityOrValue;
-    if (quantity == 0 || quantity > 32 || address + quantity > gRegisterCount) { exception(functionCode, 0x02); return; }
+    if (quantity == 0 || quantity > kCoilCount || address + quantity > kCoilCount) {
+      exception(functionCode, 0x02);
+      return;
+    }
+    const uint8_t byteCount = static_cast<uint8_t>((quantity + 7U) / 8U);
+    uint8_t reply[5] = {gSlaveId, functionCode, byteCount, 0, 0};
+    for (uint16_t i = 0; i < quantity; ++i) {
+      if (gCoils[address + i]) reply[3 + i / 8U] |= static_cast<uint8_t>(1U << (i % 8U));
+    }
+    sendFrame(reply, static_cast<uint8_t>(3 + byteCount));
+  } else if (functionCode == 0x03) {
+    const uint16_t quantity = quantityOrValue;
+    if (quantity == 0 || quantity > 32 || address + quantity > gRegisterCount) {
+      exception(functionCode, 0x02);
+      return;
+    }
     uint8_t reply[70];
     reply[0] = gSlaveId;
     reply[1] = functionCode;
@@ -82,11 +100,37 @@ void processFrame() {
       reply[4 + i * 2] = static_cast<uint8_t>(gRegisters[address + i] & 0xFFU);
     }
     sendFrame(reply, static_cast<uint8_t>(3 + quantity * 2U));
+  } else if (functionCode == 0x05) {
+    if (address >= kCoilCount || (quantityOrValue != 0xFF00U && quantityOrValue != 0x0000U)) {
+      exception(functionCode, 0x02);
+      return;
+    }
+    gCoils[address] = quantityOrValue == 0xFF00U;
+    uint8_t reply[8];
+    memcpy(reply, gFrame, 6);
+    sendFrame(reply, 6);
   } else if (functionCode == 0x06) {
-    if (!writableAddress(address) || address >= gRegisterCount) { exception(functionCode, 0x02); return; }
+    if (!writableAddress(address) || address >= gRegisterCount) {
+      exception(functionCode, 0x02);
+      return;
+    }
     storeRegister(address, quantityOrValue);
     uint8_t reply[8];
     memcpy(reply, gFrame, 6);
+    sendFrame(reply, 6);
+  } else if (functionCode == 0x0F) {
+    const uint16_t quantity = quantityOrValue;
+    const uint8_t byteCount = gFrame[6];
+    if (quantity == 0 || address + quantity > kCoilCount ||
+        byteCount != static_cast<uint8_t>((quantity + 7U) / 8U) ||
+        gLength < static_cast<uint8_t>(9U + byteCount)) {
+      exception(functionCode, 0x03);
+      return;
+    }
+    for (uint16_t i = 0; i < quantity; ++i) {
+      gCoils[address + i] = (gFrame[7 + i / 8U] & static_cast<uint8_t>(1U << (i % 8U))) != 0;
+    }
+    uint8_t reply[8] = {gSlaveId, functionCode, gFrame[2], gFrame[3], gFrame[4], gFrame[5], 0, 0};
     sendFrame(reply, 6);
   } else if (functionCode == 0x10) {
     const uint16_t quantity = quantityOrValue;
@@ -116,6 +160,7 @@ void ModbusSlave::begin(uint8_t slaveId, uint16_t *registers, uint16_t registerC
   gRegisters = registers;
   gRegisterCount = registerCount;
   gLength = 0;
+  for (uint16_t i = 0; i < kCoilCount; ++i) gCoils[i] = false;
 }
 
 void ModbusSlave::update() {
@@ -129,6 +174,16 @@ void ModbusSlave::update() {
     processFrame();
     gLength = 0;
   }
+}
+
+bool ModbusSlave::consumeCoil(uint16_t address) {
+  if (address >= kCoilCount || !gCoils[address]) return false;
+  gCoils[address] = false;
+  return true;
+}
+
+bool ModbusSlave::coil(uint16_t address) {
+  return address < kCoilCount && gCoils[address];
 }
 
 bool ModbusSlave::connected() { return gLastRequest != 0 && millis() - gLastRequest < 5000UL; }
