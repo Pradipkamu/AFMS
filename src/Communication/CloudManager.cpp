@@ -280,9 +280,9 @@ void CloudManager::update() {
   while (EventBus::next(event)) {
     if (!shouldUploadEvent(event.type)) continue;
     queuePayload(buildEventPayload(event));
-    if (event.type == EventType::MachineReady) TelegramClient::sendMachineReady();
-    else if (event.type == EventType::LossSelected && event.value >= 1 && event.value <= 16)
-      TelegramClient::sendLoss(static_cast<uint16_t>(event.value), event.durationSeconds);
+    if (event.type == EventType::LossSelected && event.value >= 1 && event.value <= 16) {
+      TelegramClient::queueLoss(static_cast<uint16_t>(event.value), event.durationSeconds);
+    }
   }
 
   String shiftSummary;
