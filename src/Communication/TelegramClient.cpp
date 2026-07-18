@@ -18,9 +18,13 @@ uint32_t gLastVerifyAttemptMs = 0;
 uint32_t gLastMessageAttemptMs = 0;
 uint16_t gPendingLossCode = 0;
 uint32_t gPendingLossDurationSeconds = 0;
+uint16_t gLastSentLossCode = 0;
+uint32_t gLastSentLossDurationSeconds = 0;
+uint32_t gLastSentLossMs = 0;
 String gPendingMonthlyReport;
 constexpr uint32_t kVerifyRetryMs = 60000UL;
 constexpr uint32_t kMessageRetryMs = 30000UL;
+constexpr uint32_t kLossDuplicateWindowMs = 60000UL;
 char gBotToken[96] = "";
 char gChatId[32] = "";
 
@@ -221,6 +225,9 @@ void TelegramClient::begin() {
   gLastMessageAttemptMs = 0;
   gPendingLossCode = 0;
   gPendingLossDurationSeconds = 0;
+  gLastSentLossCode = 0;
+  gLastSentLossDurationSeconds = 0;
+  gLastSentLossMs = 0;
   gPendingMonthlyReport = "";
   loadTelegramConfig();
   if (!configured()) Logger::warn(F("[TELEGRAM] Bot token or chat ID missing"));
@@ -272,6 +279,15 @@ bool TelegramClient::sendMachineReady() {
 }
 
 bool TelegramClient::sendLoss(uint16_t lossCode, uint32_t durationSeconds) {
+  const uint32_t nowMs = millis();
+  if (gLastSentLossCode == lossCode &&
+      gLastSentLossDurationSeconds == durationSeconds &&
+      gLastSentLossMs != 0 &&
+      nowMs - gLastSentLossMs < kLossDuplicateWindowMs) {
+    Logger::warn(F("[TELEGRAM] Duplicate loss notification suppressed"));
+    return true;
+  }
+
   String message = F("AFMS loss recorded\nMachine: ");
   message += Config::machineName();
   message += F("\nLoss code: ");
@@ -280,11 +296,22 @@ bool TelegramClient::sendLoss(uint16_t lossCode, uint32_t durationSeconds) {
   message += durationSeconds;
   message += F(" sec\nTime: ");
   message += TimeManager::iso8601();
-  return sendText(message);
+
+  if (!sendText(message)) return false;
+
+  gLastSentLossCode = lossCode;
+  gLastSentLossDurationSeconds = durationSeconds;
+  gLastSentLossMs = nowMs;
+  return true;
 }
 
 void TelegramClient::queueLoss(uint16_t lossCode, uint32_t durationSeconds) {
   if (lossCode < 1 || lossCode > 16) return;
+  if (gPendingLossCode == lossCode &&
+      gPendingLossDurationSeconds == durationSeconds) {
+    Logger::warn(F("[TELEGRAM] Duplicate queued loss suppressed"));
+    return;
+  }
   gPendingLossCode = lossCode;
   gPendingLossDurationSeconds = durationSeconds;
 }
