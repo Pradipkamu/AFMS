@@ -14,7 +14,12 @@ namespace {
 uint32_t gLastHourlySummaryMs = 0;
 uint32_t gSuccess = 0;
 uint32_t gFailure = 0;
+uint32_t gNextQueueRetryMs = 0;
+uint8_t gQueueFailureStreak = 0;
 constexpr uint32_t kHourlySummaryMs = 3600000UL;
+constexpr uint32_t kQueueRetryBaseMs = 30000UL;
+constexpr uint32_t kQueueRetryMaxMs = 900000UL;
+constexpr uint32_t kQueueSuccessCooldownMs = 1000UL;
 
 String jsonEscape(const char *value) {
   String out;
@@ -115,6 +120,25 @@ bool upload(const String &payload) {
 void deliverOrQueue(const String &payload) {
   if (!WiFiManager::connected() || !upload(payload)) OfflineQueue::push(payload);
 }
+
+bool queueRetryDue(uint32_t nowMs) {
+  return gNextQueueRetryMs == 0 ||
+         static_cast<int32_t>(nowMs - gNextQueueRetryMs) >= 0;
+}
+
+uint32_t queueRetryDelayMs() {
+  const uint8_t exponent = gQueueFailureStreak > 5 ? 5 : gQueueFailureStreak;
+  uint32_t delayMs = kQueueRetryBaseMs << exponent;
+  if (delayMs > kQueueRetryMaxMs) delayMs = kQueueRetryMaxMs;
+  return delayMs;
+}
+
+void scheduleQueueRetry(uint32_t nowMs) {
+  if (gQueueFailureStreak < 255) ++gQueueFailureStreak;
+  const uint32_t delayMs = queueRetryDelayMs();
+  gNextQueueRetryMs = nowMs + delayMs;
+  Logger::warn(String(F("[GOOGLE] Queue retry in ")) + (delayMs / 1000UL) + F(" seconds"));
+}
 }
 
 void CloudManager::begin() {
@@ -123,6 +147,8 @@ void CloudManager::begin() {
   OfflineQueue::begin();
   TelegramClient::begin();
   gLastHourlySummaryMs = millis();
+  gNextQueueRetryMs = 0;
+  gQueueFailureStreak = 0;
 }
 
 void CloudManager::update() {
@@ -144,9 +170,22 @@ void CloudManager::update() {
 
   String queued;
   if (OfflineQueue::peek(queued)) {
-    if (upload(queued)) OfflineQueue::pop();
+    const uint32_t nowMs = millis();
+    if (!queueRetryDue(nowMs)) return;
+
+    if (upload(queued)) {
+      OfflineQueue::pop();
+      gQueueFailureStreak = 0;
+      gNextQueueRetryMs = nowMs + kQueueSuccessCooldownMs;
+      Logger::info(F("[GOOGLE] Queued record uploaded"));
+    } else {
+      scheduleQueueRetry(nowMs);
+    }
     return;
   }
+
+  gQueueFailureStreak = 0;
+  gNextQueueRetryMs = 0;
 
   if (millis() - gLastHourlySummaryMs >= kHourlySummaryMs) {
     gLastHourlySummaryMs = millis();
