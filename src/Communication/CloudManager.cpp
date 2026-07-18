@@ -5,6 +5,7 @@
 #include "TelegramClient.h"
 #include "../Core/Config.h"
 #include "../Core/EventBus.h"
+#include "../Core/LossCatalog.h"
 #include "../Core/Logger.h"
 #include "../Machine/MachineEngine.h"
 #include "../Machine/ShiftManager.h"
@@ -34,6 +35,10 @@ String jsonEscape(const char *value) {
     out += *value++;
   }
   return out;
+}
+
+String jsonEscape(const String &value) {
+  return jsonEscape(value.c_str());
 }
 
 const __FlashStringHelper *eventName(EventType type) {
@@ -88,7 +93,7 @@ String buildEventPayload(const Event &event) {
   const MachineSnapshot machine = MachineEngine::snapshot();
   const ShiftSnapshot shift = ShiftManager::snapshot();
   String payload;
-  payload.reserve(544);
+  payload.reserve(608);
   payload += F("{\"record_type\":\"event\",\"api_token\":\"");
   payload += jsonEscape(Config::apiToken());
   payload += F("\",\"machine_id\":\""); payload += jsonEscape(Config::machineId());
@@ -98,7 +103,9 @@ String buildEventPayload(const Event &event) {
   payload += F("\",\"event_value\":"); payload += event.value;
   payload += F(",\"duration_seconds\":"); payload += event.durationSeconds;
   if (event.type == EventType::LossSelected) {
-    payload += F(",\"loss_code\":"); payload += event.value;
+    const uint16_t lossCode = static_cast<uint16_t>(event.value);
+    payload += F(",\"loss_code\":"); payload += lossCode;
+    payload += F(",\"loss_name\":\""); payload += jsonEscape(LossCatalog::name(lossCode)); payload += '"';
     payload += F(",\"loss_duration_seconds\":"); payload += event.durationSeconds;
   }
   payload += F(",\"state\":"); payload += static_cast<uint8_t>(machine.state);
