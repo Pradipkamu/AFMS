@@ -3,11 +3,10 @@
   "machine_name": "PRESS-01",
   "hourly_upload_delay_seconds": 0,
   "wifi_ssid": "Pradip",
-  "wifi_password": "12345679",
+  "wifi_password": "",
   "google_web_app_url": "",
-  "api_token": "AFMS-2026-Factory-Secret-8d92f1a7b3c4e5f6",
+  "api_token": "",
   "telegram_bot_token": "",
-  "idleDelaySeconds": 120,
   "loss_alarm_delay_seconds": 120,
   "production_pulse_debounce_ms": 3000,
   "reject_pulse_debounce_ms": 5000,
@@ -20,11 +19,10 @@
   "shift_2_end": "24:00",
   "shift_3_name": "C",
   "shift_3_start": "24:00",
-  "shift_3_end": "08:00"
-}
-"runtime_state": {
-  "enabled": true,
-  "save_interval_seconds": 60,
-  "restore_on_boot": true
->>>>>>> Stashed changes
+  "shift_3_end": "08:00",
+  "runtime_state": {
+    "enabled": true,
+    "save_interval_seconds": 60,
+    "restore_on_boot": true
+  }
 }
