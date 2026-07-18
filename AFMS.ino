@@ -1,6 +1,7 @@
 #include "src/Core/Version.h"
 #include "src/Core/Logger.h"
 #include "src/Core/Config.h"
+#include "src/Core/LossCatalog.h"
 #include "src/Core/EventBus.h"
 #include "src/Core/SystemHealth.h"
 #include "src/Core/ReliabilityManager.h"
@@ -29,6 +30,7 @@ void setup() {
 
   ReliabilityManager::begin();
   Config::load();
+  LossCatalog::begin();
   EventBus::begin();
   SystemHealth::begin();
   WiFiManager::begin(Config::wifiSsid(), Config::wifiPassword());
