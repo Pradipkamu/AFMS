@@ -9,14 +9,19 @@
 #include "../Machine/MachineEngine.h"
 #include "../Machine/ShiftManager.h"
 #include "../Storage/OfflineQueue.h"
+#include <LittleFS.h>
 
 namespace {
-uint32_t gLastHourlySummaryMs = 0;
+constexpr const char *kPendingHourlyPath = "/hourly.pending";
+constexpr const char *kPendingHourlyTempPath = "/hourly.pending.tmp";
+uint32_t gLastQueuedEpochHour = 0;
+bool gHourlyScheduleInitialized = false;
+String gPendingHourlyPayload;
+uint32_t gPendingHourlyNotBeforeEpoch = 0;
 uint32_t gSuccess = 0;
 uint32_t gFailure = 0;
 uint32_t gNextQueueRetryMs = 0;
 uint8_t gQueueFailureStreak = 0;
-constexpr uint32_t kHourlySummaryMs = 3600000UL;
 constexpr uint32_t kQueueRetryBaseMs = 30000UL;
 constexpr uint32_t kQueueRetryMaxMs = 900000UL;
 constexpr uint32_t kQueueSuccessCooldownMs = 1000UL;
@@ -43,17 +48,19 @@ bool shouldUploadEvent(EventType type) {
   return type == EventType::MachineReady || type == EventType::LossSelected;
 }
 
-String buildHourlySummaryPayload() {
+String buildHourlySummaryPayload(uint32_t periodEndEpoch) {
   const MachineSnapshot machine = MachineEngine::snapshot();
   const ShiftSnapshot shift = ShiftManager::snapshot();
   String payload;
-  payload.reserve(768);
+  payload.reserve(832);
   payload += F("{\"record_type\":\"hourly_summary\",\"api_token\":\"");
   payload += jsonEscape(Config::apiToken());
   payload += F("\",\"machine_id\":\""); payload += jsonEscape(Config::machineId());
   payload += F("\",\"machine_name\":\""); payload += jsonEscape(Config::machineName());
   payload += F("\",\"timestamp\":\""); payload += TimeManager::iso8601();
-  payload += F("\",\"state\":"); payload += static_cast<uint8_t>(machine.state);
+  payload += F("\",\"period_end_epoch\":"); payload += periodEndEpoch;
+  payload += F(",\"upload_delay_seconds\":"); payload += Config::hourlyUploadDelaySeconds();
+  payload += F(",\"state\":"); payload += static_cast<uint8_t>(machine.state);
   payload += F(",\"shift\":"); payload += shift.shiftId;
   payload += F(",\"operator_id\":"); payload += shift.operatorId;
   payload += F(",\"part_number\":"); payload += shift.partNumber;
@@ -117,8 +124,97 @@ bool upload(const String &payload) {
   return false;
 }
 
-void deliverOrQueue(const String &payload) {
-  if (!WiFiManager::connected() || !upload(payload)) OfflineQueue::push(payload);
+bool queuePayload(const String &payload) {
+  if (OfflineQueue::push(payload)) return true;
+  Logger::error(F("[GOOGLE] Failed to store record in offline queue"));
+  ++gFailure;
+  return false;
+}
+
+bool persistPendingHourly(uint32_t notBeforeEpoch, const String &payload) {
+  File file = LittleFS.open(kPendingHourlyTempPath, "w");
+  if (!file) return false;
+  file.println(notBeforeEpoch);
+  file.print(payload);
+  file.flush();
+  const bool valid = file.getWriteError() == 0;
+  file.close();
+  if (!valid) {
+    LittleFS.remove(kPendingHourlyTempPath);
+    return false;
+  }
+  LittleFS.remove(kPendingHourlyPath);
+  if (!LittleFS.rename(kPendingHourlyTempPath, kPendingHourlyPath)) {
+    LittleFS.remove(kPendingHourlyTempPath);
+    return false;
+  }
+  gPendingHourlyNotBeforeEpoch = notBeforeEpoch;
+  gPendingHourlyPayload = payload;
+  return true;
+}
+
+void loadPendingHourly() {
+  gPendingHourlyPayload = String();
+  gPendingHourlyNotBeforeEpoch = 0;
+  File file = LittleFS.open(kPendingHourlyPath, "r");
+  if (!file) return;
+  const String epochLine = file.readStringUntil('\n');
+  gPendingHourlyNotBeforeEpoch = static_cast<uint32_t>(strtoul(epochLine.c_str(), nullptr, 10));
+  gPendingHourlyPayload = file.readString();
+  file.close();
+  if (gPendingHourlyNotBeforeEpoch == 0 || !gPendingHourlyPayload.length()) {
+    Logger::error(F("[GOOGLE] Invalid pending hourly record removed"));
+    LittleFS.remove(kPendingHourlyPath);
+    gPendingHourlyNotBeforeEpoch = 0;
+    gPendingHourlyPayload = String();
+    return;
+  }
+  Logger::info(F("[GOOGLE] Pending hourly record restored"));
+}
+
+void releasePendingHourly() {
+  if (!gPendingHourlyPayload.length() || !TimeManager::synchronized()) return;
+  const time_t now = TimeManager::now();
+  if (now <= 0 || static_cast<uint32_t>(now) < gPendingHourlyNotBeforeEpoch) return;
+  if (!queuePayload(gPendingHourlyPayload)) return;
+  LittleFS.remove(kPendingHourlyPath);
+  gPendingHourlyPayload = String();
+  gPendingHourlyNotBeforeEpoch = 0;
+  Logger::info(F("[GOOGLE] Delayed hourly summary released to queue"));
+}
+
+void scheduleHourlySummary() {
+  if (!TimeManager::synchronized()) return;
+
+  const time_t now = TimeManager::now();
+  if (now <= 0) return;
+  const uint32_t epochNow = static_cast<uint32_t>(now);
+  const uint32_t epochHour = epochNow / 3600UL;
+
+  if (!gHourlyScheduleInitialized) {
+    gLastQueuedEpochHour = epochHour;
+    gHourlyScheduleInitialized = true;
+    Logger::info(F("[GOOGLE] Hourly scheduler synchronized"));
+    return;
+  }
+
+  if (epochHour == gLastQueuedEpochHour) return;
+  if (gPendingHourlyPayload.length()) {
+    Logger::warn(F("[GOOGLE] Previous hourly summary still pending; new snapshot deferred"));
+    return;
+  }
+
+  const uint32_t periodEndEpoch = epochHour * 3600UL;
+  const uint32_t notBeforeEpoch = periodEndEpoch + Config::hourlyUploadDelaySeconds();
+  const String payload = buildHourlySummaryPayload(periodEndEpoch);
+  if (persistPendingHourly(notBeforeEpoch, payload)) {
+    gLastQueuedEpochHour = epochHour;
+    Logger::info(String(F("[GOOGLE] Hourly snapshot saved; release delay ")) +
+                 Config::hourlyUploadDelaySeconds() + F(" sec"));
+  } else {
+    Logger::error(F("[GOOGLE] Failed to persist delayed hourly summary"));
+    ++gFailure;
+  }
 }
 
 bool queueRetryDue(uint32_t nowMs) {
@@ -139,6 +235,29 @@ void scheduleQueueRetry(uint32_t nowMs) {
   gNextQueueRetryMs = nowMs + delayMs;
   Logger::warn(String(F("[GOOGLE] Queue retry in ")) + (delayMs / 1000UL) + F(" seconds"));
 }
+
+void processQueuedUpload() {
+  if (!WiFiManager::connected()) return;
+
+  String queued;
+  if (!OfflineQueue::peek(queued)) {
+    gQueueFailureStreak = 0;
+    gNextQueueRetryMs = 0;
+    return;
+  }
+
+  const uint32_t nowMs = millis();
+  if (!queueRetryDue(nowMs)) return;
+
+  if (upload(queued)) {
+    OfflineQueue::pop();
+    gQueueFailureStreak = 0;
+    gNextQueueRetryMs = nowMs + kQueueSuccessCooldownMs;
+    Logger::info(F("[GOOGLE] Queued record uploaded"));
+  } else {
+    scheduleQueueRetry(nowMs);
+  }
+}
 }
 
 void CloudManager::begin() {
@@ -146,7 +265,9 @@ void CloudManager::begin() {
   TimeManager::begin();
   OfflineQueue::begin();
   TelegramClient::begin();
-  gLastHourlySummaryMs = millis();
+  loadPendingHourly();
+  gLastQueuedEpochHour = 0;
+  gHourlyScheduleInitialized = false;
   gNextQueueRetryMs = 0;
   gQueueFailureStreak = 0;
 }
@@ -158,41 +279,24 @@ void CloudManager::update() {
   Event event;
   while (EventBus::next(event)) {
     if (!shouldUploadEvent(event.type)) continue;
-    deliverOrQueue(buildEventPayload(event));
+    queuePayload(buildEventPayload(event));
     if (event.type == EventType::MachineReady) TelegramClient::sendMachineReady();
     else if (event.type == EventType::LossSelected && event.value >= 1 && event.value <= 16)
       TelegramClient::sendLoss(static_cast<uint16_t>(event.value), event.durationSeconds);
   }
 
   String shiftSummary;
-  if (ShiftManager::consumeCompletedSummary(shiftSummary)) deliverOrQueue(shiftSummary);
-  if (!WiFiManager::connected()) return;
+  if (ShiftManager::consumeCompletedSummary(shiftSummary)) queuePayload(shiftSummary);
 
-  String queued;
-  if (OfflineQueue::peek(queued)) {
-    const uint32_t nowMs = millis();
-    if (!queueRetryDue(nowMs)) return;
-
-    if (upload(queued)) {
-      OfflineQueue::pop();
-      gQueueFailureStreak = 0;
-      gNextQueueRetryMs = nowMs + kQueueSuccessCooldownMs;
-      Logger::info(F("[GOOGLE] Queued record uploaded"));
-    } else {
-      scheduleQueueRetry(nowMs);
-    }
-    return;
-  }
-
-  gQueueFailureStreak = 0;
-  gNextQueueRetryMs = 0;
-
-  if (millis() - gLastHourlySummaryMs >= kHourlySummaryMs) {
-    gLastHourlySummaryMs = millis();
-    deliverOrQueue(buildHourlySummaryPayload());
-  }
+  releasePendingHourly();
+  scheduleHourlySummary();
+  releasePendingHourly();
+  processQueuedUpload();
 }
 
-void CloudManager::queueStatusNow() { deliverOrQueue(buildHourlySummaryPayload()); }
+void CloudManager::queueStatusNow() {
+  const time_t now = TimeManager::now();
+  queuePayload(buildHourlySummaryPayload(now > 0 ? static_cast<uint32_t>(now) : 0));
+}
 uint32_t CloudManager::uploadSuccessCount() { return gSuccess; }
 uint32_t CloudManager::uploadFailureCount() { return gFailure; }

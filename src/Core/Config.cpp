@@ -11,6 +11,8 @@ constexpr const char *kBackupPath = "/machine.json.bak";
 constexpr uint32_t kDefaultLossAlarmDelaySeconds = 600UL;
 constexpr uint32_t kMinLossAlarmDelaySeconds = 1UL;
 constexpr uint32_t kMaxLossAlarmDelaySeconds = 86400UL;
+constexpr uint16_t kDefaultHourlyUploadDelaySeconds = 0U;
+constexpr uint16_t kMaxHourlyUploadDelaySeconds = 1200U;
 
 char gMachineId[16] = "MCH001";
 char gMachineName[32] = "PRESS-01";
@@ -25,6 +27,7 @@ uint16_t gShiftStartMinutes[3] = {480, 960, 1440};
 uint16_t gShiftEndMinutes[3] = {960, 1440, 480};
 bool gShiftScheduleValid = false;
 uint32_t gLossAlarmDelaySeconds = kDefaultLossAlarmDelaySeconds;
+uint16_t gHourlyUploadDelaySeconds = kDefaultHourlyUploadDelaySeconds;
 bool gAlarmActiveHigh = true;
 
 void copyValue(const char *value, char *dest, size_t size) {
@@ -85,6 +88,15 @@ uint32_t readLossAlarmDelaySeconds(const JsonDocument &document) {
   }
   return value;
 }
+
+uint16_t readHourlyUploadDelaySeconds(const JsonDocument &document) {
+  const uint32_t value = document["hourly_upload_delay_seconds"] | kDefaultHourlyUploadDelaySeconds;
+  if (value > kMaxHourlyUploadDelaySeconds) {
+    Logger::warn(F("[GOOGLE] Hourly upload delay out of range; using 0 seconds"));
+    return kDefaultHourlyUploadDelaySeconds;
+  }
+  return static_cast<uint16_t>(value);
+}
 }
 
 bool Config::load() {
@@ -93,6 +105,7 @@ bool Config::load() {
     Logger::warn(F("Config file missing or invalid; using defaults"));
     gShiftScheduleValid = false;
     gLossAlarmDelaySeconds = kDefaultLossAlarmDelaySeconds;
+    gHourlyUploadDelaySeconds = kDefaultHourlyUploadDelaySeconds;
     gAlarmActiveHigh = true;
     return false;
   }
@@ -111,10 +124,12 @@ bool Config::load() {
   }
 
   gLossAlarmDelaySeconds = readLossAlarmDelaySeconds(document);
+  gHourlyUploadDelaySeconds = readHourlyUploadDelaySeconds(document);
   gAlarmActiveHigh = document["alarm_active_high"] | true;
   gShiftScheduleValid = validateShiftSchedule();
   Logger::info(String(F("Config loaded for ")) + gMachineId);
   Logger::info(String(F("[LOSS] Alarm delay: ")) + gLossAlarmDelaySeconds + F(" sec"));
+  Logger::info(String(F("[GOOGLE] Hourly upload delay: ")) + gHourlyUploadDelaySeconds + F(" sec"));
   Logger::info(String(F("[LOSS] Alarm output active ")) + (gAlarmActiveHigh ? F("HIGH") : F("LOW")));
   if (!gShiftScheduleValid) Logger::error(F("[SHIFT] Invalid shift configuration; automatic shifts disabled"));
   return true;
@@ -131,6 +146,7 @@ bool Config::save() {
   document["google_web_app_url"] = gGoogleWebAppUrl;
   document["api_token"] = gApiToken;
   document["loss_alarm_delay_seconds"] = gLossAlarmDelaySeconds;
+  document["hourly_upload_delay_seconds"] = gHourlyUploadDelaySeconds;
   document["alarm_active_high"] = gAlarmActiveHigh;
   document.remove("idle_delay_seconds");
   document.remove("idleDelaySeconds");
@@ -193,4 +209,5 @@ uint16_t Config::shiftStartMinutes(uint8_t index) { return index < 3 ? gShiftSta
 uint16_t Config::shiftEndMinutes(uint8_t index) { return index < 3 ? gShiftEndMinutes[index] : 0; }
 bool Config::shiftScheduleValid() { return gShiftScheduleValid; }
 uint32_t Config::lossAlarmDelaySeconds() { return gLossAlarmDelaySeconds; }
+uint16_t Config::hourlyUploadDelaySeconds() { return gHourlyUploadDelaySeconds; }
 bool Config::alarmActiveHigh() { return gAlarmActiveHigh; }

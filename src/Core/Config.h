@@ -22,5 +22,6 @@ uint16_t shiftStartMinutes(uint8_t index);
 uint16_t shiftEndMinutes(uint8_t index);
 bool shiftScheduleValid();
 uint32_t lossAlarmDelaySeconds();
+uint16_t hourlyUploadDelaySeconds();
 bool alarmActiveHigh();
 }

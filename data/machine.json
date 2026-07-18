@@ -1,6 +1,7 @@
 {
   "machine_id": "MCH001",
   "machine_name": "PRESS-01",
+  "hourly_upload_delay_seconds": 0,
   "wifi_ssid": "",
   "wifi_password": "",
   "google_web_app_url": "",
