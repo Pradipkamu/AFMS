@@ -67,6 +67,23 @@ void exception(uint8_t functionCode, uint8_t code) {
   sendFrame(reply, 3);
 }
 
+uint8_t expectedFrameLength() {
+  if (gLength < 2) return 0;
+  switch (gFrame[1]) {
+    case 0x01:
+    case 0x03:
+    case 0x05:
+    case 0x06:
+      return 8;
+    case 0x0F:
+    case 0x10:
+      if (gLength < 7) return 0;
+      return static_cast<uint8_t>(9U + gFrame[6]);
+    default:
+      return 8;
+  }
+}
+
 void processFrame() {
   if (gLength < 8 || gFrame[0] != gSlaveId) return;
   const uint16_t received = static_cast<uint16_t>(gFrame[gLength - 2]) |
@@ -174,6 +191,12 @@ void ModbusSlave::update() {
     const int value = serial.read();
     if (value >= 0 && gLength < sizeof(gFrame)) gFrame[gLength++] = static_cast<uint8_t>(value);
     gLastByteUs = micros();
+
+    const uint8_t expected = expectedFrameLength();
+    if (expected != 0 && gLength == expected) {
+      processFrame();
+      gLength = 0;
+    }
   }
   if (gLength > 0 && static_cast<uint32_t>(micros() - gLastByteUs) > kFrameGapUs) {
     processFrame();
