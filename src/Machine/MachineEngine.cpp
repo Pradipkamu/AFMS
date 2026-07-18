@@ -11,7 +11,6 @@
 #include "../Core/HardwareConfig.h"
 #include "../Core/PulseConfig.h"
 #include "../Core/Config.h"
-#include "../Communication/TelegramClient.h"
 
 namespace {
 bool gReady = false;
@@ -157,7 +156,6 @@ bool MachineEngine::acknowledgeLossCode(uint16_t lossCode) {
   gState = MachineState::Ready;
   gLastAcceptedLossCode = lossCode;
   gLastLossDurationSeconds = duration;
-  TelegramClient::queueLoss(lossCode, duration);
   Logger::info(F("[LOSS] Loss captured; monitoring restarted immediately"));
   return true;
 }
