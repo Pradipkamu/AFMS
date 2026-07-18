@@ -4,6 +4,7 @@
 namespace RuntimeStateManager {
 void begin();
 void update();
+void scheduleSave();
 bool saveNow();
 bool restored();
 uint32_t saveIntervalSeconds();
