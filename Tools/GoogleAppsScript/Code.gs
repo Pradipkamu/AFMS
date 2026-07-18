@@ -13,10 +13,10 @@ const CONFIG = Object.freeze({
 
 const EVENT_HEADERS = Object.freeze([
   'Server Received At', 'Device Timestamp', 'Record Type', 'Event Name',
-  'Event Value', 'Loss Code', 'Loss Duration Seconds', 'Machine ID',
-  'Machine Name', 'State', 'Shift', 'Operator ID', 'Part Number', 'Part Name',
-  'Total', 'Reject', 'Good', 'Target', 'Availability %', 'Performance %',
-  'Quality %', 'OEE %', 'Alarm Active'
+  'Event Value', 'Loss Code', 'Loss Name', 'Loss Duration Seconds',
+  'Machine ID', 'Machine Name', 'State', 'Shift', 'Operator ID', 'Part Number',
+  'Part Name', 'Total', 'Reject', 'Good', 'Target', 'Availability %',
+  'Performance %', 'Quality %', 'OEE %', 'Alarm Active'
 ]);
 
 const HOURLY_HEADERS = Object.freeze([
@@ -83,7 +83,7 @@ function doGet() {
   return json_({
     ok: true,
     application: 'AFMS Google Sheets Receiver',
-    version: '3.0.0',
+    version: '3.0.1',
     timestamp: Utilities.formatDate(new Date(), CONFIG.TIME_ZONE, 'yyyy-MM-dd HH:mm:ss')
   });
 }
@@ -97,11 +97,11 @@ function initializeAfmsSheets() {
   const spreadsheet = SpreadsheetApp.openById(spreadsheetId);
   const events = getOrCreate_(spreadsheet, CONFIG.EVENTS_SHEET, EVENT_HEADERS);
   const hourly = getOrCreate_(spreadsheet, CONFIG.HOURLY_SHEET, HOURLY_HEADERS);
-  ensureHeaders_(events, EVENT_HEADERS);
+  ensureEventHeaders_(events);
   ensureHeaders_(hourly, HOURLY_HEADERS);
   events.getRange('A:B').setNumberFormat('dd-MMM-yyyy HH:mm:ss');
   hourly.getRange('A:B').setNumberFormat('dd-MMM-yyyy HH:mm:ss');
-  events.getRange('S:V').setNumberFormat('0.0');
+  events.getRange('T:W').setNumberFormat('0.0');
   hourly.getRange('U:X').setNumberFormat('0.0');
   events.autoResizeColumns(1, EVENT_HEADERS.length);
   hourly.autoResizeColumns(1, HOURLY_HEADERS.length);
@@ -109,7 +109,7 @@ function initializeAfmsSheets() {
 
 function appendEvent_(spreadsheet, data) {
   const sheet = getOrCreate_(spreadsheet, CONFIG.EVENTS_SHEET, EVENT_HEADERS);
-  ensureHeaders_(sheet, EVENT_HEADERS);
+  ensureEventHeaders_(sheet);
   const production = number_(data.production !== undefined ? data.production : data.total);
   const reject = number_(data.reject);
   const good = data.good !== undefined ? number_(data.good) : Math.max(0, production - reject);
@@ -119,6 +119,7 @@ function appendEvent_(spreadsheet, data) {
     new Date(), timestamp_(data.timestamp), text_(data.record_type),
     text_(data.event_name || (data.record_type === 'shift_summary' ? 'shift_summary' : '')),
     number_(data.event_value), isLoss ? number_(data.loss_code || data.event_value) : '',
+    isLoss ? text_(data.loss_name) : '',
     isLoss ? number_(data.loss_duration_seconds || data.duration_seconds) : '',
     text_(data.machine_id), text_(data.machine_name), number_(data.state),
     number_(data.shift), number_(data.operator_id), number_(data.part_number),
@@ -130,7 +131,7 @@ function appendEvent_(spreadsheet, data) {
   sheet.appendRow(row);
   const rowNumber = sheet.getLastRow();
   sheet.getRange(rowNumber, 1, 1, 2).setNumberFormat('dd-MMM-yyyy HH:mm:ss');
-  sheet.getRange(rowNumber, 19, 1, 4).setNumberFormat('0.0');
+  sheet.getRange(rowNumber, 20, 1, 4).setNumberFormat('0.0');
   return {sheet: sheet.getName(), row: rowNumber};
 }
 
@@ -168,6 +169,16 @@ function getOrCreate_(spreadsheet, name, headers) {
     sheet.setFrozenRows(1);
   }
   return sheet;
+}
+
+function ensureEventHeaders_(sheet) {
+  if (sheet.getLastRow() > 0) {
+    const existing = sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), 8)).getValues()[0];
+    const hasOldLossLayout = existing[5] === 'Loss Code' &&
+      existing[6] === 'Loss Duration Seconds' && existing[7] !== 'Loss Duration Seconds';
+    if (hasOldLossLayout) sheet.insertColumnBefore(7);
+  }
+  ensureHeaders_(sheet, EVENT_HEADERS);
 }
 
 function ensureHeaders_(sheet, headers) {
