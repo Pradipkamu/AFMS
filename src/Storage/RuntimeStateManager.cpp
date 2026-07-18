@@ -16,11 +16,14 @@ constexpr const char *kBackupPath = "/runtime_state.bak";
 constexpr uint32_t kDefaultIntervalSeconds = 60;
 constexpr uint32_t kMinIntervalSeconds = 10;
 constexpr uint32_t kMaxIntervalSeconds = 3600;
+constexpr uint32_t kDeferredSaveDelayMs = 750UL;
 bool gEnabled = true;
 bool gRestoreOnBoot = true;
 bool gRestored = false;
+bool gSavePending = false;
 uint32_t gIntervalSeconds = kDefaultIntervalSeconds;
 uint32_t gLastSaveMs = 0;
+uint32_t gSaveRequestedMs = 0;
 uint32_t gSaveSuccess = 0;
 uint32_t gSaveFailure = 0;
 uint32_t gLastSavedChecksum = 0;
@@ -132,25 +135,8 @@ bool restoreState() {
   Logger::info(String(F("[STATE] Restored production=")) + production + F(", reject=") + reject);
   return true;
 }
-}
 
-void RuntimeStateManager::begin() {
-  loadConfiguration();
-  if (!gEnabled) return;
-  if (gRestoreOnBoot) gRestored = restoreState();
-  gLastSaveMs = millis();
-  Logger::info(String(F("[STATE] Save interval: ")) + gIntervalSeconds + F(" sec"));
-}
-
-void RuntimeStateManager::update() {
-  if (!gEnabled) return;
-  const uint32_t intervalMs = gIntervalSeconds * 1000UL;
-  if (static_cast<uint32_t>(millis() - gLastSaveMs) < intervalMs) return;
-  gLastSaveMs = millis();
-  saveNow();
-}
-
-bool RuntimeStateManager::saveNow() {
+bool persistState() {
   if (!gEnabled) return false;
   const uint32_t production = ProductionManager::total();
   const uint32_t reject = RejectManager::total();
@@ -203,6 +189,39 @@ bool RuntimeStateManager::saveNow() {
   gLastSavedChecksum = currentChecksum;
   ++gSaveSuccess;
   Logger::info(String(F("[STATE] Saved production=")) + production + F(", reject=") + reject);
+  return true;
+}
+}
+
+void RuntimeStateManager::begin() {
+  loadConfiguration();
+  if (!gEnabled) return;
+  if (gRestoreOnBoot) gRestored = restoreState();
+  gLastSaveMs = millis();
+  Logger::info(String(F("[STATE] Save interval: ")) + gIntervalSeconds + F(" sec"));
+}
+
+void RuntimeStateManager::update() {
+  if (!gEnabled) return;
+  const uint32_t nowMs = millis();
+
+  if (gSavePending && static_cast<uint32_t>(nowMs - gSaveRequestedMs) >= kDeferredSaveDelayMs) {
+    gSavePending = false;
+    gLastSaveMs = nowMs;
+    persistState();
+    return;
+  }
+
+  const uint32_t intervalMs = gIntervalSeconds * 1000UL;
+  if (static_cast<uint32_t>(nowMs - gLastSaveMs) < intervalMs) return;
+  gLastSaveMs = nowMs;
+  persistState();
+}
+
+bool RuntimeStateManager::saveNow() {
+  if (!gEnabled) return false;
+  gSavePending = true;
+  gSaveRequestedMs = millis();
   return true;
 }
 
