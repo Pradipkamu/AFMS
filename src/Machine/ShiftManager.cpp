@@ -1,5 +1,6 @@
 #include "ShiftManager.h"
-#include "MachineEngine.h"
+#include "ProductionManager.h"
+#include "RejectManager.h"
 #include "OEEManager.h"
 #include "../Communication/TimeManager.h"
 #include "../Core/Config.h"
@@ -33,10 +34,17 @@ void copyName(const char *name) {
 }
 
 void refreshCounters() {
-  const MachineSnapshot machine = MachineEngine::snapshot();
-  gShift.production = machine.totalParts - gBaseProduction;
-  gShift.reject = machine.rejectParts - gBaseReject;
-  gShift.good = gShift.production > gShift.reject ? gShift.production - gShift.reject : 0;
+  const uint32_t totalProduction = ProductionManager::total();
+  const uint32_t totalReject = RejectManager::total();
+  gShift.production = totalProduction >= gBaseProduction
+      ? totalProduction - gBaseProduction
+      : 0;
+  gShift.reject = totalReject >= gBaseReject
+      ? totalReject - gBaseReject
+      : 0;
+  gShift.good = gShift.production > gShift.reject
+      ? gShift.production - gShift.reject
+      : 0;
 }
 
 bool minuteInRange(uint16_t minute, uint16_t start, uint16_t end) {
@@ -129,9 +137,8 @@ void completeCurrentShift(bool archiveCsv) {
 }
 
 void resetBaselines() {
-  const MachineSnapshot machine = MachineEngine::snapshot();
-  gBaseProduction = machine.totalParts;
-  gBaseReject = machine.rejectParts;
+  gBaseProduction = ProductionManager::total();
+  gBaseReject = RejectManager::total();
   gShift.production = gShift.reject = gShift.good = 0;
   gShift.startedAtEpoch = static_cast<uint32_t>(TimeManager::now());
   OEEManager::resetShift();
