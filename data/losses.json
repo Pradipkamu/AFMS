@@ -1,0 +1,20 @@
+{
+  "losses": [
+    { "code": 1, "name": "Loss 1" },
+    { "code": 2, "name": "Loss 2" },
+    { "code": 3, "name": "Loss 3" },
+    { "code": 4, "name": "Loss 4" },
+    { "code": 5, "name": "Loss 5" },
+    { "code": 6, "name": "Loss 6" },
+    { "code": 7, "name": "Loss 7" },
+    { "code": 8, "name": "Loss 8" },
+    { "code": 9, "name": "Loss 9" },
+    { "code": 10, "name": "Loss 10" },
+    { "code": 11, "name": "Loss 11" },
+    { "code": 12, "name": "Loss 12" },
+    { "code": 13, "name": "Loss 13" },
+    { "code": 14, "name": "Loss 14" },
+    { "code": 15, "name": "Loss 15" },
+    { "code": 16, "name": "Loss 16" }
+  ]
+}
