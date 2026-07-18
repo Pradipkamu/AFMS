@@ -192,7 +192,7 @@ void HMIManager::update() {
     gLastPartName[sizeof(gLastPartName) - 1] = '\0';
     criticalChange = true;
   }
-  if (criticalChange) RuntimeStateManager::saveNow();
+  if (criticalChange) RuntimeStateManager::scheduleSave();
 
   if (millis() - gLastSyncMs < 250UL) return;
   gLastSyncMs = millis();
