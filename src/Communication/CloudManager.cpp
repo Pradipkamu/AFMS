@@ -11,12 +11,12 @@
 #include "../Storage/OfflineQueue.h"
 
 namespace {
-uint32_t gLastHourlySummaryMs = 0;
+uint32_t gLastQueuedEpochHour = 0;
+bool gHourlyScheduleInitialized = false;
 uint32_t gSuccess = 0;
 uint32_t gFailure = 0;
 uint32_t gNextQueueRetryMs = 0;
 uint8_t gQueueFailureStreak = 0;
-constexpr uint32_t kHourlySummaryMs = 3600000UL;
 constexpr uint32_t kQueueRetryBaseMs = 30000UL;
 constexpr uint32_t kQueueRetryMaxMs = 900000UL;
 constexpr uint32_t kQueueSuccessCooldownMs = 1000UL;
@@ -117,8 +117,33 @@ bool upload(const String &payload) {
   return false;
 }
 
-void deliverOrQueue(const String &payload) {
-  if (!WiFiManager::connected() || !upload(payload)) OfflineQueue::push(payload);
+bool queuePayload(const String &payload) {
+  if (OfflineQueue::push(payload)) return true;
+  Logger::error(F("[GOOGLE] Failed to store record in offline queue"));
+  ++gFailure;
+  return false;
+}
+
+void scheduleHourlySummary() {
+  if (!TimeManager::synchronized()) return;
+
+  const time_t now = TimeManager::now();
+  if (now <= 0) return;
+  const uint32_t epochHour = static_cast<uint32_t>(now / 3600);
+
+  if (!gHourlyScheduleInitialized) {
+    gLastQueuedEpochHour = epochHour;
+    gHourlyScheduleInitialized = true;
+    Logger::info(F("[GOOGLE] Hourly scheduler synchronized"));
+    return;
+  }
+
+  if (epochHour == gLastQueuedEpochHour) return;
+
+  if (queuePayload(buildHourlySummaryPayload())) {
+    gLastQueuedEpochHour = epochHour;
+    Logger::info(F("[GOOGLE] Hourly summary queued"));
+  }
 }
 
 bool queueRetryDue(uint32_t nowMs) {
@@ -139,6 +164,29 @@ void scheduleQueueRetry(uint32_t nowMs) {
   gNextQueueRetryMs = nowMs + delayMs;
   Logger::warn(String(F("[GOOGLE] Queue retry in ")) + (delayMs / 1000UL) + F(" seconds"));
 }
+
+void processQueuedUpload() {
+  if (!WiFiManager::connected()) return;
+
+  String queued;
+  if (!OfflineQueue::peek(queued)) {
+    gQueueFailureStreak = 0;
+    gNextQueueRetryMs = 0;
+    return;
+  }
+
+  const uint32_t nowMs = millis();
+  if (!queueRetryDue(nowMs)) return;
+
+  if (upload(queued)) {
+    OfflineQueue::pop();
+    gQueueFailureStreak = 0;
+    gNextQueueRetryMs = nowMs + kQueueSuccessCooldownMs;
+    Logger::info(F("[GOOGLE] Queued record uploaded"));
+  } else {
+    scheduleQueueRetry(nowMs);
+  }
+}
 }
 
 void CloudManager::begin() {
@@ -146,7 +194,8 @@ void CloudManager::begin() {
   TimeManager::begin();
   OfflineQueue::begin();
   TelegramClient::begin();
-  gLastHourlySummaryMs = millis();
+  gLastQueuedEpochHour = 0;
+  gHourlyScheduleInitialized = false;
   gNextQueueRetryMs = 0;
   gQueueFailureStreak = 0;
 }
@@ -158,41 +207,19 @@ void CloudManager::update() {
   Event event;
   while (EventBus::next(event)) {
     if (!shouldUploadEvent(event.type)) continue;
-    deliverOrQueue(buildEventPayload(event));
+    queuePayload(buildEventPayload(event));
     if (event.type == EventType::MachineReady) TelegramClient::sendMachineReady();
     else if (event.type == EventType::LossSelected && event.value >= 1 && event.value <= 16)
       TelegramClient::sendLoss(static_cast<uint16_t>(event.value), event.durationSeconds);
   }
 
   String shiftSummary;
-  if (ShiftManager::consumeCompletedSummary(shiftSummary)) deliverOrQueue(shiftSummary);
-  if (!WiFiManager::connected()) return;
+  if (ShiftManager::consumeCompletedSummary(shiftSummary)) queuePayload(shiftSummary);
 
-  String queued;
-  if (OfflineQueue::peek(queued)) {
-    const uint32_t nowMs = millis();
-    if (!queueRetryDue(nowMs)) return;
-
-    if (upload(queued)) {
-      OfflineQueue::pop();
-      gQueueFailureStreak = 0;
-      gNextQueueRetryMs = nowMs + kQueueSuccessCooldownMs;
-      Logger::info(F("[GOOGLE] Queued record uploaded"));
-    } else {
-      scheduleQueueRetry(nowMs);
-    }
-    return;
-  }
-
-  gQueueFailureStreak = 0;
-  gNextQueueRetryMs = 0;
-
-  if (millis() - gLastHourlySummaryMs >= kHourlySummaryMs) {
-    gLastHourlySummaryMs = millis();
-    deliverOrQueue(buildHourlySummaryPayload());
-  }
+  scheduleHourlySummary();
+  processQueuedUpload();
 }
 
-void CloudManager::queueStatusNow() { deliverOrQueue(buildHourlySummaryPayload()); }
+void CloudManager::queueStatusNow() { queuePayload(buildHourlySummaryPayload()); }
 uint32_t CloudManager::uploadSuccessCount() { return gSuccess; }
 uint32_t CloudManager::uploadFailureCount() { return gFailure; }
