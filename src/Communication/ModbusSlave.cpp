@@ -67,6 +67,33 @@ void exception(uint8_t functionCode, uint8_t code) {
   sendFrame(reply, 3);
 }
 
+uint16_t expectedFrameLength() {
+  if (gLength < 2) return 0;
+
+  switch (gFrame[1]) {
+    case 0x01:
+    case 0x03:
+    case 0x05:
+    case 0x06:
+      return 8;
+
+    case 0x0F:
+    case 0x10:
+      if (gLength < 7) return 0;
+      return static_cast<uint16_t>(9U + gFrame[6]);
+
+    default:
+      // Unsupported fixed-length requests can be rejected immediately.
+      return 8;
+  }
+}
+
+void resetReceiveFrame(bool countError) {
+  if (countError) ++gErrors;
+  gLength = 0;
+  gLastByteUs = 0;
+}
+
 void processFrame() {
   if (gLength < 8 || gFrame[0] != gSlaveId) return;
   const uint16_t received = static_cast<uint16_t>(gFrame[gLength - 2]) |
@@ -127,7 +154,7 @@ void processFrame() {
     const uint8_t byteCount = gFrame[6];
     if (quantity == 0 || address + quantity > kCoilCount ||
         byteCount != static_cast<uint8_t>((quantity + 7U) / 8U) ||
-        gLength < static_cast<uint8_t>(9U + byteCount)) {
+        gLength < static_cast<uint16_t>(9U + byteCount)) {
       exception(functionCode, 0x03);
       return;
     }
@@ -165,19 +192,46 @@ void ModbusSlave::begin(uint8_t slaveId, uint16_t *registers, uint16_t registerC
   gRegisters = registers;
   gRegisterCount = registerCount;
   gLength = 0;
+  gLastByteUs = 0;
   for (uint16_t i = 0; i < kCoilCount; ++i) gCoils[i] = false;
 }
 
 void ModbusSlave::update() {
   HardwareSerial &serial = RS485Driver::port();
+
   while (serial.available()) {
     const int value = serial.read();
-    if (value >= 0 && gLength < sizeof(gFrame)) gFrame[gLength++] = static_cast<uint8_t>(value);
+    if (value < 0) continue;
+
+    if (gLength >= sizeof(gFrame)) {
+      resetReceiveFrame(true);
+      RS485Driver::flushInput();
+      break;
+    }
+
+    gFrame[gLength++] = static_cast<uint8_t>(value);
     gLastByteUs = micros();
+
+    const uint16_t expected = expectedFrameLength();
+    if (expected > sizeof(gFrame)) {
+      resetReceiveFrame(true);
+      RS485Driver::flushInput();
+      break;
+    }
+
+    if (expected != 0 && gLength == expected) {
+      processFrame();
+      resetReceiveFrame(false);
+    } else if (expected != 0 && gLength > expected) {
+      // A malformed stream must not poison the following request.
+      resetReceiveFrame(true);
+    }
   }
+
+  // Retain the RTU silent-gap fallback for incomplete, unknown, or noisy frames.
   if (gLength > 0 && static_cast<uint32_t>(micros() - gLastByteUs) > kFrameGapUs) {
     processFrame();
-    gLength = 0;
+    resetReceiveFrame(false);
   }
 }
 
