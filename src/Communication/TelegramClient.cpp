@@ -2,6 +2,7 @@
 #include "WiFiManager.h"
 #include "TimeManager.h"
 #include "../Core/Config.h"
+#include "../Core/LossCatalog.h"
 #include "../Core/Logger.h"
 #include "../Storage/ShiftCsvManager.h"
 #include <ESP8266HTTPClient.h>
@@ -290,6 +291,8 @@ bool TelegramClient::sendLoss(uint16_t lossCode, uint32_t durationSeconds) {
 
   String message = F("AFMS loss recorded\nMachine: ");
   message += Config::machineName();
+  message += F("\nLoss: ");
+  message += LossCatalog::name(lossCode);
   message += F("\nLoss code: ");
   message += lossCode;
   message += F("\nDuration: ");
