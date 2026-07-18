@@ -16,11 +16,14 @@ constexpr const char *kBackupPath = "/runtime_state.bak";
 constexpr uint32_t kDefaultIntervalSeconds = 60;
 constexpr uint32_t kMinIntervalSeconds = 10;
 constexpr uint32_t kMaxIntervalSeconds = 3600;
+constexpr uint32_t kDeferredSaveDelayMs = 1000UL;
 bool gEnabled = true;
 bool gRestoreOnBoot = true;
 bool gRestored = false;
+bool gSavePending = false;
 uint32_t gIntervalSeconds = kDefaultIntervalSeconds;
 uint32_t gLastSaveMs = 0;
+uint32_t gSaveRequestedMs = 0;
 uint32_t gSaveSuccess = 0;
 uint32_t gSaveFailure = 0;
 uint32_t gLastSavedChecksum = 0;
@@ -144,10 +147,23 @@ void RuntimeStateManager::begin() {
 
 void RuntimeStateManager::update() {
   if (!gEnabled) return;
+  const uint32_t now = millis();
+  if (gSavePending && static_cast<uint32_t>(now - gSaveRequestedMs) >= kDeferredSaveDelayMs) {
+    if (saveNow()) gSavePending = false;
+    gLastSaveMs = now;
+    return;
+  }
+
   const uint32_t intervalMs = gIntervalSeconds * 1000UL;
-  if (static_cast<uint32_t>(millis() - gLastSaveMs) < intervalMs) return;
-  gLastSaveMs = millis();
+  if (static_cast<uint32_t>(now - gLastSaveMs) < intervalMs) return;
+  gLastSaveMs = now;
   saveNow();
+}
+
+void RuntimeStateManager::scheduleSave() {
+  if (!gEnabled) return;
+  gSavePending = true;
+  gSaveRequestedMs = millis();
 }
 
 bool RuntimeStateManager::saveNow() {

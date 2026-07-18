@@ -145,9 +145,9 @@ bool MachineEngine::acknowledgeLossCode(uint16_t lossCode) {
 
   const uint32_t idleNow = IdleManager::idleSeconds();
   const uint32_t duration = idleNow >= gLossStartIdleSeconds ? idleNow - gLossStartIdleSeconds : 0;
-  OEEManager::recordLoss(lossCode, duration);
-  EventBus::publish(EventType::LossSelected, lossCode, duration);
 
+  // Release the machine first. No logging, event delivery, OEE accounting, or
+  // network queueing is allowed to delay the physical alarm clear or inputs.
   gLossClassifiedForCurrentIdle = true;
   AlarmManager::clear();
   ProductionManager::setEnabled(true);
@@ -157,8 +157,12 @@ bool MachineEngine::acknowledgeLossCode(uint16_t lossCode) {
   gState = MachineState::Ready;
   gLastAcceptedLossCode = lossCode;
   gLastLossDurationSeconds = duration;
+
+  // Non-critical bookkeeping happens only after the machine is released.
+  OEEManager::recordLoss(lossCode, duration);
+  EventBus::publish(EventType::LossSelected, lossCode, duration);
   TelegramClient::queueLoss(lossCode, duration);
-  Logger::info(F("[LOSS] Loss captured; monitoring restarted immediately"));
+  Logger::info(F("[LOSS] Loss accepted; machine released immediately"));
   return true;
 }
 
