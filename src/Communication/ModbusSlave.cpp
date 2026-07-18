@@ -83,7 +83,6 @@ uint16_t expectedFrameLength() {
       return static_cast<uint16_t>(9U + gFrame[6]);
 
     default:
-      // Unsupported fixed-length requests can be rejected immediately.
       return 8;
   }
 }
@@ -111,7 +110,7 @@ void processFrame() {
       return;
     }
     const uint8_t byteCount = static_cast<uint8_t>((quantity + 7U) / 8U);
-    uint8_t reply[5] = {gSlaveId, functionCode, byteCount, 0, 0};
+    uint8_t reply[7] = {gSlaveId, functionCode, byteCount, 0, 0, 0, 0};
     for (uint16_t i = 0; i < quantity; ++i) {
       if (gCoils[address + i]) reply[3 + i / 8U] |= static_cast<uint8_t>(1U << (i % 8U));
     }
@@ -223,12 +222,10 @@ void ModbusSlave::update() {
       processFrame();
       resetReceiveFrame(false);
     } else if (expected != 0 && gLength > expected) {
-      // A malformed stream must not poison the following request.
       resetReceiveFrame(true);
     }
   }
 
-  // Retain the RTU silent-gap fallback for incomplete, unknown, or noisy frames.
   if (gLength > 0 && static_cast<uint32_t>(micros() - gLastByteUs) > kFrameGapUs) {
     processFrame();
     resetReceiveFrame(false);
