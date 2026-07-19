@@ -75,6 +75,22 @@ uint32_t shiftDurationSeconds(uint16_t shiftId) {
   return static_cast<uint32_t>(durationMinutes) * 60UL;
 }
 
+uint32_t automaticTarget(uint16_t cycleSeconds, uint16_t shiftId) {
+  if (cycleSeconds == 0) return 0;
+  const uint32_t durationSeconds = shiftDurationSeconds(shiftId);
+  return durationSeconds == 0 ? 0 : durationSeconds / cycleSeconds;
+}
+
+void applyAutomaticTarget(uint16_t cycleSeconds, uint16_t shiftId) {
+  const uint32_t calculatedTarget = automaticTarget(cycleSeconds, shiftId);
+  if (calculatedTarget == 0) return;
+
+  const uint16_t target = clamp16(calculatedTarget);
+  gRegisters[HMIRegister::CommandTargetQuantity] = target;
+  ShiftManager::setTargetQuantity(target);
+  gLastTargetQuantity = target;
+}
+
 uint32_t adjustedTarget(uint32_t originalTarget,
                          uint16_t shiftId,
                          uint32_t plannedShutdownSeconds) {
@@ -127,9 +143,11 @@ void HMIManager::begin() {
   gLastShift = shift.shiftId;
   gLastPartNumber = shift.partNumber;
   strlcpy(gLastPartName, shift.partName, sizeof(gLastPartName));
+  applyAutomaticTarget(cycleSeconds, shift.shiftId);
   gLastAlarmActive = MachineEngine::snapshot().alarmActive;
   gLastHmiHeartbeatMs = millis();
   Logger::info(F("Delta HMI Modbus RTU hardware UART ready"));
+  Logger::info(F("[TARGET] Automatic target calculated from shift duration and cycle time"));
   Logger::info(F("[LOSS] HMI coils 00001-00016 mapped to Loss 1-16"));
 }
 
@@ -151,6 +169,7 @@ void HMIManager::update() {
     const uint32_t cycleMs = static_cast<uint32_t>(cycleSeconds) * 1000UL;
     CycleManager::setCycleTimeMs(cycleMs);
     OEEManager::setIdealCycleTimeMs(cycleMs);
+    applyAutomaticTarget(cycleSeconds, gRegisters[HMIRegister::CommandShift]);
     gLastCycleSeconds = cycleSeconds;
     criticalChange = true;
   }
@@ -165,6 +184,7 @@ void HMIManager::update() {
   const uint16_t shift = gRegisters[HMIRegister::CommandShift];
   if (shift >= 1 && shift <= 3 && shift != gLastShift) {
     ShiftManager::setShift(shift);
+    applyAutomaticTarget(gRegisters[HMIRegister::CommandCycleTimeSeconds], shift);
     gLastShift = shift;
     criticalChange = true;
   }
