@@ -138,45 +138,91 @@ bool queuePayload(const String &payload) {
   return false;
 }
 
-bool persistPendingHourly(uint32_t notBeforeEpoch, const String &payload) {
-  File file = LittleFS.open(kPendingHourlyTempPath, "w");
-  if (!file) return false;
-  file.println(notBeforeEpoch);
-  file.print(payload);
-  file.flush();
-  const bool valid = file.getWriteError() == 0;
+bool parsePendingHourlyLine(const String &line, uint32_t &notBeforeEpoch, String &payload) {
+  const int separator = line.indexOf('\t');
+  if (separator <= 0) return false;
+  notBeforeEpoch = static_cast<uint32_t>(strtoul(line.substring(0, separator).c_str(), nullptr, 10));
+  payload = line.substring(separator + 1);
+  return notBeforeEpoch != 0 && payload.length() != 0;
+}
+
+bool loadFirstPendingHourly() {
+  gPendingHourlyPayload = String();
+  gPendingHourlyNotBeforeEpoch = 0;
+  File file = LittleFS.open(kPendingHourlyPath, "r");
+  if (!file || !file.available()) {
+    if (file) file.close();
+    return false;
+  }
+
+  const String firstLine = file.readStringUntil('\n');
+  if (parsePendingHourlyLine(firstLine, gPendingHourlyNotBeforeEpoch, gPendingHourlyPayload)) {
+    file.close();
+    return true;
+  }
+
+  // Migrate the original two-line single-record format.
+  const uint32_t legacyEpoch = static_cast<uint32_t>(strtoul(firstLine.c_str(), nullptr, 10));
+  const String legacyPayload = file.readString();
   file.close();
-  if (!valid) {
-    LittleFS.remove(kPendingHourlyTempPath);
+  if (legacyEpoch == 0 || !legacyPayload.length()) {
+    Logger::error(F("[GOOGLE] Invalid pending hourly records removed"));
+    LittleFS.remove(kPendingHourlyPath);
     return false;
   }
+
+  File migrated = LittleFS.open(kPendingHourlyTempPath, "w");
+  if (!migrated) return false;
+  migrated.print(legacyEpoch);
+  migrated.print('\t');
+  migrated.println(legacyPayload);
+  migrated.close();
   LittleFS.remove(kPendingHourlyPath);
-  if (!LittleFS.rename(kPendingHourlyTempPath, kPendingHourlyPath)) {
-    LittleFS.remove(kPendingHourlyTempPath);
+  if (!LittleFS.rename(kPendingHourlyTempPath, kPendingHourlyPath)) return false;
+  gPendingHourlyNotBeforeEpoch = legacyEpoch;
+  gPendingHourlyPayload = legacyPayload;
+  Logger::info(F("[GOOGLE] Legacy pending hourly record migrated"));
+  return true;
+}
+
+bool appendPendingHourly(uint32_t notBeforeEpoch, const String &payload) {
+  File file = LittleFS.open(kPendingHourlyPath, "a");
+  if (!file) return false;
+  file.print(notBeforeEpoch);
+  file.print('\t');
+  const bool valid = file.println(payload) > 0;
+  file.close();
+  if (!valid) return false;
+  if (!gPendingHourlyPayload.length()) {
+    gPendingHourlyNotBeforeEpoch = notBeforeEpoch;
+    gPendingHourlyPayload = payload;
+  }
+  return true;
+}
+
+bool removeFirstPendingHourly() {
+  File source = LittleFS.open(kPendingHourlyPath, "r");
+  if (!source || !source.available()) {
+    if (source) source.close();
     return false;
   }
-  gPendingHourlyNotBeforeEpoch = notBeforeEpoch;
-  gPendingHourlyPayload = payload;
+  source.readStringUntil('\n');
+  File temp = LittleFS.open(kPendingHourlyTempPath, "w");
+  if (!temp) {
+    source.close();
+    return false;
+  }
+  while (source.available()) temp.write(source.read());
+  source.close();
+  temp.close();
+  LittleFS.remove(kPendingHourlyPath);
+  if (!LittleFS.rename(kPendingHourlyTempPath, kPendingHourlyPath)) return false;
+  loadFirstPendingHourly();
   return true;
 }
 
 void loadPendingHourly() {
-  gPendingHourlyPayload = String();
-  gPendingHourlyNotBeforeEpoch = 0;
-  File file = LittleFS.open(kPendingHourlyPath, "r");
-  if (!file) return;
-  const String epochLine = file.readStringUntil('\n');
-  gPendingHourlyNotBeforeEpoch = static_cast<uint32_t>(strtoul(epochLine.c_str(), nullptr, 10));
-  gPendingHourlyPayload = file.readString();
-  file.close();
-  if (gPendingHourlyNotBeforeEpoch == 0 || !gPendingHourlyPayload.length()) {
-    Logger::error(F("[GOOGLE] Invalid pending hourly record removed"));
-    LittleFS.remove(kPendingHourlyPath);
-    gPendingHourlyNotBeforeEpoch = 0;
-    gPendingHourlyPayload = String();
-    return;
-  }
-  Logger::info(F("[GOOGLE] Pending hourly record restored"));
+  if (loadFirstPendingHourly()) Logger::info(F("[GOOGLE] Pending hourly records restored"));
 }
 
 void releasePendingHourly() {
@@ -184,9 +230,10 @@ void releasePendingHourly() {
   const time_t now = TimeManager::now();
   if (now <= 0 || static_cast<uint32_t>(now) < gPendingHourlyNotBeforeEpoch) return;
   if (!queuePayload(gPendingHourlyPayload)) return;
-  LittleFS.remove(kPendingHourlyPath);
-  gPendingHourlyPayload = String();
-  gPendingHourlyNotBeforeEpoch = 0;
+  if (!removeFirstPendingHourly()) {
+    Logger::error(F("[GOOGLE] Failed to remove released hourly record"));
+    return;
+  }
   Logger::info(F("[GOOGLE] Delayed hourly summary released to queue"));
 }
 
@@ -206,17 +253,13 @@ void scheduleHourlySummary() {
   }
 
   if (epochHour == gLastQueuedEpochHour) return;
-  if (gPendingHourlyPayload.length()) {
-    Logger::warn(F("[GOOGLE] Previous hourly summary still pending; new snapshot deferred"));
-    return;
-  }
 
   const uint32_t periodEndEpoch = epochHour * 3600UL;
   const uint32_t notBeforeEpoch = periodEndEpoch + Config::hourlyUploadDelaySeconds();
   const String payload = buildHourlySummaryPayload(periodEndEpoch);
-  if (persistPendingHourly(notBeforeEpoch, payload)) {
+  if (appendPendingHourly(notBeforeEpoch, payload)) {
     gLastQueuedEpochHour = epochHour;
-    Logger::info(String(F("[GOOGLE] Hourly snapshot saved; release delay ")) +
+    Logger::info(String(F("[GOOGLE] Hourly snapshot appended; release delay ")) +
                  Config::hourlyUploadDelaySeconds() + F(" sec"));
   } else {
     Logger::error(F("[GOOGLE] Failed to persist delayed hourly summary"));
