@@ -19,13 +19,18 @@ constexpr uint16_t kLossCommandOffset = 0;
 constexpr uint16_t kLossCommandAliasOffset = 94;
 constexpr uint32_t kFrameGapUs = 4500UL;
 
+bool rangeWithin(uint16_t address, uint16_t quantity, uint16_t limit) {
+  return quantity > 0 && address < limit && quantity <= static_cast<uint16_t>(limit - address);
+}
+
 bool writableAddress(uint16_t address) {
   return address < kWritableRegisterCount || address == kLossCommandAliasOffset;
 }
 
 bool writableRange(uint16_t address, uint16_t quantity) {
   if (quantity == 0) return false;
-  if (address < kWritableRegisterCount && address + quantity <= kWritableRegisterCount) return true;
+  if (address < kWritableRegisterCount &&
+      quantity <= static_cast<uint16_t>(kWritableRegisterCount - address)) return true;
   return address == kLossCommandAliasOffset && quantity == 1;
 }
 
@@ -37,7 +42,8 @@ void storeRegister(uint16_t address, uint16_t value) {
 void storeCoil(uint16_t address, bool value) {
   if (address >= kCoilCount) return;
   gCoils[address] = value;
-  if (value && gRegisters && gRegisters[kLossCommandOffset] == 0) {
+  if (value && gRegisters && gRegisterCount > kLossCommandOffset &&
+      gRegisters[kLossCommandOffset] == 0) {
     gRegisters[kLossCommandOffset] = static_cast<uint16_t>(address + 1U);
   }
 }
@@ -63,6 +69,7 @@ void sendFrame(uint8_t *data, uint8_t length) {
 }
 
 void exception(uint8_t functionCode, uint8_t code) {
+  ++gErrors;
   uint8_t reply[5] = {gSlaveId, static_cast<uint8_t>(functionCode | 0x80U), code, 0, 0};
   sendFrame(reply, 3);
 }
@@ -97,7 +104,13 @@ void processFrame() {
   if (gLength < 8 || gFrame[0] != gSlaveId) return;
   const uint16_t received = static_cast<uint16_t>(gFrame[gLength - 2]) |
                             static_cast<uint16_t>(gFrame[gLength - 1] << 8U);
-  if (crc16(gFrame, gLength - 2) != received) { ++gErrors; return; }
+  if (crc16(gFrame, gLength - 2) != received) {
+    ++gErrors;
+    return;
+  }
+
+  ++gRequests;
+  gLastRequest = millis();
 
   const uint8_t functionCode = gFrame[1];
   const uint16_t address = static_cast<uint16_t>(gFrame[2] << 8U) | gFrame[3];
@@ -105,7 +118,11 @@ void processFrame() {
 
   if (functionCode == 0x01) {
     const uint16_t quantity = quantityOrValue;
-    if (quantity == 0 || quantity > kCoilCount || address + quantity > kCoilCount) {
+    if (quantity == 0 || quantity > kCoilCount) {
+      exception(functionCode, 0x03);
+      return;
+    }
+    if (!rangeWithin(address, quantity, kCoilCount)) {
       exception(functionCode, 0x02);
       return;
     }
@@ -117,7 +134,15 @@ void processFrame() {
     sendFrame(reply, static_cast<uint8_t>(3 + byteCount));
   } else if (functionCode == 0x03) {
     const uint16_t quantity = quantityOrValue;
-    if (quantity == 0 || quantity > 32 || address + quantity > gRegisterCount) {
+    if (quantity == 0 || quantity > 32) {
+      exception(functionCode, 0x03);
+      return;
+    }
+    if (!gRegisters || gRegisterCount == 0) {
+      exception(functionCode, 0x04);
+      return;
+    }
+    if (!rangeWithin(address, quantity, gRegisterCount)) {
       exception(functionCode, 0x02);
       return;
     }
@@ -131,8 +156,12 @@ void processFrame() {
     }
     sendFrame(reply, static_cast<uint8_t>(3 + quantity * 2U));
   } else if (functionCode == 0x05) {
-    if (address >= kCoilCount || (quantityOrValue != 0xFF00U && quantityOrValue != 0x0000U)) {
+    if (address >= kCoilCount) {
       exception(functionCode, 0x02);
+      return;
+    }
+    if (quantityOrValue != 0xFF00U && quantityOrValue != 0x0000U) {
+      exception(functionCode, 0x03);
       return;
     }
     storeCoil(address, quantityOrValue == 0xFF00U);
@@ -140,6 +169,10 @@ void processFrame() {
     memcpy(reply, gFrame, 6);
     sendFrame(reply, 6);
   } else if (functionCode == 0x06) {
+    if (!gRegisters || gRegisterCount == 0) {
+      exception(functionCode, 0x04);
+      return;
+    }
     if (!writableAddress(address) || address >= gRegisterCount) {
       exception(functionCode, 0x02);
       return;
@@ -151,9 +184,16 @@ void processFrame() {
   } else if (functionCode == 0x0F) {
     const uint16_t quantity = quantityOrValue;
     const uint8_t byteCount = gFrame[6];
-    if (quantity == 0 || address + quantity > kCoilCount ||
-        byteCount != static_cast<uint8_t>((quantity + 7U) / 8U) ||
-        gLength < static_cast<uint16_t>(9U + byteCount)) {
+    if (quantity == 0 || quantity > kCoilCount) {
+      exception(functionCode, 0x03);
+      return;
+    }
+    if (!rangeWithin(address, quantity, kCoilCount)) {
+      exception(functionCode, 0x02);
+      return;
+    }
+    if (byteCount != static_cast<uint8_t>((quantity + 7U) / 8U) ||
+        gLength != static_cast<uint16_t>(9U + byteCount)) {
       exception(functionCode, 0x03);
       return;
     }
@@ -165,8 +205,20 @@ void processFrame() {
     sendFrame(reply, 6);
   } else if (functionCode == 0x10) {
     const uint16_t quantity = quantityOrValue;
-    if (gLength < 9 || !writableRange(address, quantity) ||
-        address + quantity > gRegisterCount || gFrame[6] != quantity * 2U) {
+    if (quantity == 0 || quantity > 59) {
+      exception(functionCode, 0x03);
+      return;
+    }
+    if (!gRegisters || gRegisterCount == 0) {
+      exception(functionCode, 0x04);
+      return;
+    }
+    if (!writableRange(address, quantity) || !rangeWithin(address, quantity, gRegisterCount)) {
+      exception(functionCode, 0x02);
+      return;
+    }
+    if (gFrame[6] != quantity * 2U ||
+        gLength != static_cast<uint16_t>(9U + gFrame[6])) {
       exception(functionCode, 0x03);
       return;
     }
@@ -178,11 +230,7 @@ void processFrame() {
     sendFrame(reply, 6);
   } else {
     exception(functionCode, 0x01);
-    return;
   }
-
-  ++gRequests;
-  gLastRequest = millis();
 }
 }
 
@@ -190,6 +238,9 @@ void ModbusSlave::begin(uint8_t slaveId, uint16_t *registers, uint16_t registerC
   gSlaveId = slaveId;
   gRegisters = registers;
   gRegisterCount = registerCount;
+  gRequests = 0;
+  gErrors = 0;
+  gLastRequest = 0;
   gLength = 0;
   gLastByteUs = 0;
   for (uint16_t i = 0; i < kCoilCount; ++i) gCoils[i] = false;
@@ -227,8 +278,13 @@ void ModbusSlave::update() {
   }
 
   if (gLength > 0 && static_cast<uint32_t>(micros() - gLastByteUs) > kFrameGapUs) {
-    processFrame();
-    resetReceiveFrame(false);
+    const bool addressedToUs = gFrame[0] == gSlaveId;
+    const uint16_t expected = expectedFrameLength();
+    const bool incomplete = addressedToUs &&
+                            (gLength < 8 || (expected != 0 && gLength != expected));
+
+    if (!incomplete) processFrame();
+    resetReceiveFrame(incomplete);
   }
 }
 
