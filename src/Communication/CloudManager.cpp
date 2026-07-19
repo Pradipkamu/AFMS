@@ -21,6 +21,7 @@ String gPendingHourlyPayload;
 uint32_t gPendingHourlyNotBeforeEpoch = 0;
 uint32_t gSuccess = 0;
 uint32_t gFailure = 0;
+bool gConnected = false;
 uint32_t gNextQueueRetryMs = 0;
 uint8_t gQueueFailureStreak = 0;
 constexpr uint32_t kQueueRetryBaseMs = 30000UL;
@@ -123,10 +124,18 @@ String buildEventPayload(const Event &event) {
 
 bool upload(const String &payload) {
   const char *url = Config::googleWebAppUrl();
-  if (!url || !url[0]) return false;
+  if (!url || !url[0]) {
+    gConnected = false;
+    return false;
+  }
   const HttpResult result = HttpClientManager::postJson(url, payload);
   Logger::info(String(F("[GOOGLE] HTTP status: ")) + result.code);
-  if (result.success()) { ++gSuccess; return true; }
+  if (result.success()) {
+    gConnected = true;
+    ++gSuccess;
+    return true;
+  }
+  gConnected = false;
   ++gFailure;
   return false;
 }
@@ -161,7 +170,6 @@ bool loadFirstPendingHourly() {
     return true;
   }
 
-  // Migrate the original two-line single-record format.
   const uint32_t legacyEpoch = static_cast<uint32_t>(strtoul(firstLine.c_str(), nullptr, 10));
   const String legacyPayload = file.readString();
   file.close();
@@ -287,7 +295,10 @@ void scheduleQueueRetry(uint32_t nowMs) {
 }
 
 void processQueuedUpload() {
-  if (!WiFiManager::connected()) return;
+  if (!WiFiManager::connected()) {
+    gConnected = false;
+    return;
+  }
 
   String queued;
   if (!OfflineQueue::peek(queued)) {
@@ -318,6 +329,7 @@ void CloudManager::begin() {
   loadPendingHourly();
   gLastQueuedEpochHour = 0;
   gHourlyScheduleInitialized = false;
+  gConnected = false;
   gNextQueueRetryMs = 0;
   gQueueFailureStreak = 0;
 }
@@ -325,6 +337,8 @@ void CloudManager::begin() {
 void CloudManager::update() {
   TimeManager::update();
   TelegramClient::update();
+
+  if (!WiFiManager::connected()) gConnected = false;
 
   Event event;
   while (EventBus::next(event)) {
@@ -348,5 +362,6 @@ void CloudManager::queueStatusNow() {
   const time_t now = TimeManager::now();
   queuePayload(buildHourlySummaryPayload(now > 0 ? static_cast<uint32_t>(now) : 0));
 }
+bool CloudManager::connected() { return gConnected && WiFiManager::connected(); }
 uint32_t CloudManager::uploadSuccessCount() { return gSuccess; }
 uint32_t CloudManager::uploadFailureCount() { return gFailure; }
