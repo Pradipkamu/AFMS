@@ -230,7 +230,7 @@ void HMIManager::update() {
           shiftData.targetQuantity > shiftData.production ? shiftData.targetQuantity - shiftData.production : 0);
 
   gRegisters[HMIRegister::StatusWifiConnected] = WiFiManager::connected() ? 1 : 0;
-  gRegisters[HMIRegister::StatusGoogleConnected] = CloudManager::uploadSuccessCount() > 0 ? 1 : 0;
+  gRegisters[HMIRegister::StatusGoogleConnected] = CloudManager::connected() ? 1 : 0;
   gRegisters[HMIRegister::StatusTelegramConnected] = TelegramClient::connected() ? 1 : 0;
   gRegisters[HMIRegister::StatusOfflineQueueCount] = OfflineQueue::count();
   write32(HMIRegister::StatusGoogleSuccessLow, CloudManager::uploadSuccessCount());
