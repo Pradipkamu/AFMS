@@ -11,6 +11,8 @@
 #include "../Core/HardwareConfig.h"
 #include "../Core/PulseConfig.h"
 #include "../Core/Config.h"
+#include "../Communication/TelegramClient.h"
+#include "../Reporting/LossGoogleReporter.h"
 
 namespace {
 bool gReady = false;
@@ -145,8 +147,8 @@ bool MachineEngine::acknowledgeLossCode(uint16_t lossCode) {
   const uint32_t idleNow = IdleManager::idleSeconds();
   const uint32_t duration = idleNow >= gLossStartIdleSeconds ? idleNow - gLossStartIdleSeconds : 0;
 
-  // Release the machine first. No reporting, filesystem, logging, or network
-  // work is allowed to delay the physical alarm clear or input re-enable.
+  // Release the machine first. No filesystem or network work is allowed to
+  // delay the physical alarm clear, input re-enable, or Ready state.
   gLossClassifiedForCurrentIdle = true;
   AlarmManager::clear();
   ProductionManager::setEnabled(true);
@@ -158,10 +160,14 @@ bool MachineEngine::acknowledgeLossCode(uint16_t lossCode) {
   gLastAcceptedLossCode = lossCode;
   gLastLossDurationSeconds = duration;
 
-  // Bookkeeping is intentionally performed only after the machine is ready.
   OEEManager::recordLoss(lossCode, duration);
-  EventBus::publish(EventType::LossSelected, lossCode, duration);
-  Logger::info(F("[LOSS] Machine released; reporting queued asynchronously"));
+
+  // Persist both destinations directly. Delivery remains asynchronous in the
+  // normal cloud loop, but the reports no longer depend on EventBus survival.
+  const bool googleQueued = LossGoogleReporter::queue(lossCode, duration);
+  TelegramClient::queueLoss(lossCode, duration);
+  Logger::info(String(F("[LOSS] Machine released; Google direct queue=")) +
+               (googleQueued ? F("ok") : F("failed")));
   return true;
 }
 
