@@ -17,6 +17,6 @@ constexpr uint32_t Rs485Baud = 9600UL;
 constexpr uint32_t DiagnosticBaud = 115200UL;
 
 constexpr uint32_t InputDebounceUs = 50000UL;
-constexpr uint32_t DefaultCycleTimeMs = 20000UL;
+constexpr uint32_t DefaultCycleTimeMs = 60000UL;
 constexpr uint32_t DefaultIdleDelayMs = 600000UL;
 }
