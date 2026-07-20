@@ -33,7 +33,8 @@ String makePayload(uint16_t code, uint32_t seconds) {
   payload += F("\",\"event_name\":\"loss_selected\",\"event_value\":"); payload += code;
   payload += F(",\"duration_seconds\":"); payload += seconds;
   payload += F(",\"loss_code\":"); payload += code;
-  payload += F(",\"loss_name\":\""); payload += escapeJson(LossCatalog::name(code)); payload += '"';
+  const String lossName = LossCatalog::name(code);
+  payload += F(",\"loss_name\":\""); payload += escapeJson(lossName.c_str()); payload += '"';
   payload += F(",\"loss_duration_seconds\":"); payload += seconds;
   payload += F(",\"state\":"); payload += static_cast<uint8_t>(machine.state);
   payload += F(",\"shift\":"); payload += shift.shiftId;
