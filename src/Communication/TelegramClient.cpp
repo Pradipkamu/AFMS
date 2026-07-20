@@ -17,6 +17,7 @@ uint32_t gTransportSuccess = 0;
 uint32_t gTransportFailure = 0;
 uint32_t gEnqueueFailure = 0;
 uint32_t gLastVerifyAttemptMs = 0;
+uint32_t gLossSequence = 0;
 constexpr uint32_t kVerifyRetryMs = 60000UL;
 char gBotToken[96] = "";
 char gChatId[32] = "";
@@ -67,7 +68,10 @@ bool request(const String &url, String *response = nullptr) {
   client.setInsecure();
   client.setTimeout(10000);
   HTTPClient http;
-  if (!http.begin(client, url)) return false;
+  if (!http.begin(client, url)) {
+    Logger::warn(F("[TELEGRAM] HTTP begin failed"));
+    return false;
+  }
   http.setTimeout(10000);
   http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
   const int code = http.GET();
@@ -75,6 +79,11 @@ bool request(const String &url, String *response = nullptr) {
   http.end();
   if (response) *response = body;
   Logger::info(String(F("[TELEGRAM] HTTP status: ")) + code);
+  if (body.length()) {
+    String preview = body;
+    if (preview.length() > 400) preview = preview.substring(0, 400) + F("...");
+    Logger::info(String(F("[TELEGRAM] Response: ")) + preview);
+  }
   return code >= 200 && code < 300 && body.indexOf(F("\"ok\":true")) >= 0;
 }
 
@@ -94,21 +103,30 @@ bool verifyBot() {
   gLastVerifyAttemptMs = millis();
   gVerified = ok;
   TelegramOutboxDelivery::setVerified(ok);
-  if (ok) Logger::info(F("[TELEGRAM] Bot connected"));
+  if (ok) Logger::info(F("[TELEGRAM] Bot connected and delivery enabled"));
   else Logger::warn(F("[TELEGRAM] Bot verification failed"));
   return ok;
 }
 
 bool sendTextTransport(const String &message) {
-  if (!TelegramClient::configured() || !WiFiManager::connected()) return false;
+  if (!TelegramClient::configured() || !WiFiManager::connected()) {
+    Logger::warn(F("[TELEGRAM] Text send blocked: configuration or WiFi unavailable"));
+    return false;
+  }
   String url = apiUrl(F("sendMessage"));
   url += F("?chat_id=");
   url += urlEncode(gChatId);
   url += F("&text=");
   url += urlEncode(message);
+  Logger::info(F("[TELEGRAM] Sending queued text message"));
   const bool ok = request(url);
-  if (ok) ++gTransportSuccess;
-  else ++gTransportFailure;
+  if (ok) {
+    ++gTransportSuccess;
+    Logger::info(F("[TELEGRAM] Text message accepted by Telegram"));
+  } else {
+    ++gTransportFailure;
+    Logger::warn(F("[TELEGRAM] Text message failed; retained for retry"));
+  }
   return ok;
 }
 
@@ -209,6 +227,7 @@ void TelegramClient::begin() {
   gVerified = false;
   gVerificationAttempted = false;
   gLastVerifyAttemptMs = 0;
+  gLossSequence = 0;
   loadTelegramConfig();
   TelegramOutboxDelivery::begin();
   if (!configured()) Logger::warn(F("[TELEGRAM] Bot token or chat ID missing"));
@@ -245,7 +264,8 @@ bool TelegramClient::sendLoss(uint16_t lossCode, uint32_t durationSeconds) {
 
 void TelegramClient::queueLoss(uint16_t lossCode, uint32_t durationSeconds) {
   if (lossCode < 1 || lossCode > 16) return;
-  const uint32_t epoch = static_cast<uint32_t>(TimeManager::now());
+  const time_t now = TimeManager::now();
+  const uint32_t epoch = now > 0 ? static_cast<uint32_t>(now) : 0;
   ReportOutboxManager::ReportRecord report;
   report.type = ReportOutboxManager::ReportType::LossEvent;
   report.createdEpoch = epoch;
@@ -259,9 +279,22 @@ void TelegramClient::queueLoss(uint16_t lossCode, uint32_t durationSeconds) {
   report.reportId += lossCode;
   report.reportId += '-';
   report.reportId += durationSeconds;
+  report.reportId += '-';
+  report.reportId += ++gLossSequence;
   if (!ReportOutboxManager::enqueue(report)) {
     ++gEnqueueFailure;
-    Logger::error(F("[TELEGRAM] Failed to persist loss notification"));
+    Logger::error(String(F("[TELEGRAM] Failed to persist loss notification: ")) + report.reportId);
+    return;
+  }
+
+  Logger::info(String(F("[TELEGRAM] Loss queued: ")) + report.reportId +
+               F(" pending=") +
+               ReportOutboxManager::pendingCount(ReportOutboxManager::Destination::Telegram));
+
+  if (gVerified && WiFiManager::connected()) {
+    TelegramOutboxDelivery::update(true, sendTextTransport, sendDocumentTransport);
+  } else {
+    Logger::warn(F("[TELEGRAM] Loss retained until bot verification and WiFi are available"));
   }
 }
 
