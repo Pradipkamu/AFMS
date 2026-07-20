@@ -81,7 +81,8 @@ bool ShiftCsvManager::appendShift(const ShiftSnapshot &shift,
 
   Logger::info(String(F("[CSV] Shift appended: ")) + gMonthlyPath);
 
-  if (shift.shiftId == 3) gDailyReportPath = gMonthlyPath;
+  // Send the updated CSV after every normal or recovered shift completion.
+  gDailyReportPath = gMonthlyPath;
   return true;
 }
 
