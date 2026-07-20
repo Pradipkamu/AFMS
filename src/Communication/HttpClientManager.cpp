@@ -1,5 +1,6 @@
 #include "HttpClientManager.h"
 #include "WiFiManager.h"
+#include "../Reporting/GoogleOutboxDelivery.h"
 #include <ESP8266HTTPClient.h>
 #include <WiFiClientSecureBearSSL.h>
 
@@ -8,9 +9,6 @@ uint16_t gTimeoutMs = 10000;
 uint32_t gFailures = 0;
 
 void normalizeBenignGoogleResponse(String &body) {
-  // Apps Script handlers commonly return an error member even on success,
-  // for example {"success":true,"error":null}. CloudManager must not treat
-  // these empty values as an application failure.
   body.replace(F("\"error\":null"), F("\"error_cleared\":true"));
   body.replace(F("\"error\": null"), F("\"error_cleared\":true"));
   body.replace(F("\"error\":\"\""), F("\"error_cleared\":true"));
@@ -18,7 +16,10 @@ void normalizeBenignGoogleResponse(String &body) {
 }
 
 HttpResult request(const char *url, const String *payload) {
-  if (!url || !url[0] || !WiFiManager::connected()) return {-1, String()};
+  if (!url || !url[0] || !WiFiManager::connected()) {
+    GoogleOutboxDelivery::setReachable(false);
+    return {-1, String()};
+  }
 
   BearSSL::WiFiClientSecure client;
   client.setInsecure();
@@ -27,16 +28,11 @@ HttpResult request(const char *url, const String *payload) {
   HTTPClient http;
   if (!http.begin(client, url)) {
     ++gFailures;
+    GoogleOutboxDelivery::setReachable(false);
     return {-2, String()};
   }
 
   http.setTimeout(gTimeoutMs);
-
-  // Google Apps Script commonly processes the POST and then returns a redirect
-  // to script.googleusercontent.com for the response body. Automatically
-  // following that redirect with the original POST can create a duplicate row.
-  // Therefore POST redirects are not followed. A trusted Google response
-  // redirect is treated as successful delivery after the original POST.
   http.setFollowRedirects(HTTPC_DISABLE_FOLLOW_REDIRECTS);
   const char *headerKeys[] = {"Location"};
   http.collectHeaders(headerKeys, 1);
@@ -61,10 +57,12 @@ HttpResult request(const char *url, const String *payload) {
     }
   }
 
-  if (code >= 200 && code < 300) normalizeBenignGoogleResponse(body);
+  const bool reachable = code >= 200 && code < 300;
+  GoogleOutboxDelivery::setReachable(reachable);
+  if (reachable) normalizeBenignGoogleResponse(body);
   http.end();
 
-  if (code < 200 || code >= 300) ++gFailures;
+  if (!reachable) ++gFailures;
   return {code, body};
 }
 }
