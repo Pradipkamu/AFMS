@@ -21,10 +21,10 @@ char gWifiPassword[65] = "";
 char gGoogleWebAppUrl[220] = "";
 char gApiToken[96] = "";
 char gShiftName[3][9] = {"A", "B", "C"};
-char gShiftStart[3][6] = {"08:00", "16:00", "24:00"};
-char gShiftEnd[3][6] = {"16:00", "24:00", "08:00"};
-uint16_t gShiftStartMinutes[3] = {480, 960, 1440};
-uint16_t gShiftEndMinutes[3] = {960, 1440, 480};
+char gShiftStart[3][6] = {"08:00", "16:00", "00:00"};
+char gShiftEnd[3][6] = {"16:00", "00:00", "08:00"};
+uint16_t gShiftStartMinutes[3] = {480, 960, 0};
+uint16_t gShiftEndMinutes[3] = {960, 0, 480};
 bool gShiftScheduleValid = false;
 uint32_t gLossAlarmDelaySeconds = kDefaultLossAlarmDelaySeconds;
 uint16_t gHourlyUploadDelaySeconds = kDefaultHourlyUploadDelaySeconds;
@@ -43,7 +43,13 @@ bool parseTime(const char *value, uint16_t &minutes) {
   if (!isDigit(value[0]) || !isDigit(value[1]) || !isDigit(value[3]) || !isDigit(value[4])) return false;
   const uint8_t hour = static_cast<uint8_t>((value[0] - '0') * 10 + (value[1] - '0'));
   const uint8_t minute = static_cast<uint8_t>((value[3] - '0') * 10 + (value[4] - '0'));
-  if (hour > 23 || minute > 59) return false;
+  if (minute > 59) return false;
+  if (hour == 24) {
+    if (minute != 0) return false;
+    minutes = 0;
+    return true;
+  }
+  if (hour > 23) return false;
   minutes = static_cast<uint16_t>(hour * 60U + minute);
   return true;
 }
