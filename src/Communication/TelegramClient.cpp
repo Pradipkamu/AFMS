@@ -287,15 +287,9 @@ void TelegramClient::queueLoss(uint16_t lossCode, uint32_t durationSeconds) {
     return;
   }
 
-  Logger::info(String(F("[TELEGRAM] Loss queued: ")) + report.reportId +
+  Logger::info(String(F("[TELEGRAM] Loss queued asynchronously: ")) + report.reportId +
                F(" pending=") +
                ReportOutboxManager::pendingCount(ReportOutboxManager::Destination::Telegram));
-
-  if (gVerified && WiFiManager::connected()) {
-    TelegramOutboxDelivery::update(true, sendTextTransport, sendDocumentTransport);
-  } else {
-    Logger::warn(F("[TELEGRAM] Loss retained until bot verification and WiFi are available"));
-  }
 }
 
 uint32_t TelegramClient::successCount() {
