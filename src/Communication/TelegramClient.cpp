@@ -6,6 +6,7 @@
 #include "../Core/Logger.h"
 #include "../Reporting/ReportOutboxManager.h"
 #include "../Reporting/TelegramOutboxDelivery.h"
+#include <ArduinoJson.h>
 #include <ESP8266HTTPClient.h>
 #include <WiFiClientSecureBearSSL.h>
 #include <LittleFS.h>
@@ -22,26 +23,53 @@ constexpr uint32_t kVerifyRetryMs = 60000UL;
 char gBotToken[96] = "";
 char gChatId[32] = "";
 
-void copyJsonString(const String &json, const char *key, char *dest, size_t size) {
-  const String token = String('"') + key + "\"";
-  const int keyPos = json.indexOf(token);
-  if (keyPos < 0) return;
-  const int colon = json.indexOf(':', keyPos + token.length());
-  const int firstQuote = json.indexOf('"', colon + 1);
-  const int secondQuote = json.indexOf('"', firstQuote + 1);
-  if (colon < 0 || firstQuote < 0 || secondQuote < 0) return;
-  json.substring(firstQuote + 1, secondQuote).toCharArray(dest, size);
+String firstConfigValue(const JsonDocument &document,
+                        const char *primary,
+                        const char *alias1 = nullptr,
+                        const char *alias2 = nullptr) {
+  const char *keys[] = {primary, alias1, alias2};
+  for (uint8_t index = 0; index < 3; ++index) {
+    const char *key = keys[index];
+    if (!key || !document.containsKey(key) || document[key].isNull()) continue;
+    String value = document[key].as<String>();
+    value.trim();
+    if (value.length()) return value;
+  }
+  return String();
 }
 
 void loadTelegramConfig() {
   gBotToken[0] = '\0';
   gChatId[0] = '\0';
+
   File file = LittleFS.open("/machine.json", "r");
-  if (!file) return;
-  const String json = file.readString();
+  if (!file) {
+    Logger::warn(F("[TELEGRAM] /machine.json could not be opened"));
+    return;
+  }
+
+  DynamicJsonDocument document(6144);
+  const DeserializationError error = deserializeJson(document, file);
   file.close();
-  copyJsonString(json, "telegram_bot_token", gBotToken, sizeof(gBotToken));
-  copyJsonString(json, "telegram_chat_id", gChatId, sizeof(gChatId));
+  if (error) {
+    Logger::warn(String(F("[TELEGRAM] Configuration JSON invalid: ")) + error.c_str());
+    return;
+  }
+
+  const String token = firstConfigValue(document,
+                                        "telegram_bot_token",
+                                        "telegramBotToken",
+                                        "bot_token");
+  const String chatId = firstConfigValue(document,
+                                         "telegram_chat_id",
+                                         "telegramChatId",
+                                         "chat_id");
+  token.toCharArray(gBotToken, sizeof(gBotToken));
+  chatId.toCharArray(gChatId, sizeof(gChatId));
+
+  Logger::info(String(F("[TELEGRAM] Config token=")) +
+               (gBotToken[0] ? F("present") : F("missing")) +
+               F(" chat_id=") + (gChatId[0] ? gChatId : "missing"));
 }
 
 String urlEncode(const String &value) {
@@ -118,7 +146,7 @@ bool sendTextTransport(const String &message) {
   url += urlEncode(gChatId);
   url += F("&text=");
   url += urlEncode(message);
-  Logger::info(F("[TELEGRAM] Sending queued text message"));
+  Logger::info(String(F("[TELEGRAM] Sending queued text to chat ")) + gChatId);
   const bool ok = request(url);
   if (ok) {
     ++gTransportSuccess;
