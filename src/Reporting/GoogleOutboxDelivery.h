@@ -20,6 +20,7 @@ inline State &state() {
 }
 
 inline void begin() { state() = State(); }
+inline void setReachable(bool reachable) { state().connected = reachable; }
 
 inline uint32_t retryDelayMs(uint8_t failureStreak) {
   constexpr uint32_t kBaseMs = 30000UL;
@@ -52,7 +53,6 @@ inline bool update(bool wifiConnected, UploadCallback upload) {
   }
 
   if (!upload(report.payload)) {
-    delivery.connected = false;
     if (delivery.failureStreak < 255) ++delivery.failureStreak;
     ++delivery.failureCount;
     delivery.nextAttemptMs = nowMs + retryDelayMs(delivery.failureStreak);
@@ -60,8 +60,7 @@ inline bool update(bool wifiConnected, UploadCallback upload) {
   }
 
   if (!ReportOutboxManager::acknowledge(report.storagePath,
-                                        ReportOutboxManager::Destination::Google)) {
-    delivery.connected = false;
+                                         ReportOutboxManager::Destination::Google)) {
     if (delivery.failureStreak < 255) ++delivery.failureStreak;
     ++delivery.failureCount;
     delivery.nextAttemptMs = nowMs + retryDelayMs(delivery.failureStreak);
