@@ -5,6 +5,7 @@
 #include "../Communication/TimeManager.h"
 #include "../Core/Config.h"
 #include "../Core/Logger.h"
+#include "../Reporting/ReportOutboxManager.h"
 #include "../Storage/ShiftCsvManager.h"
 #include <cstring>
 #include <time.h>
@@ -113,7 +114,27 @@ void syncOeeScheduleTime() {
   OEEManager::setScheduledShiftElapsedSeconds(scheduledElapsedSeconds(gShift.shiftId));
 }
 
-void completeCurrentShift(bool archiveCsv, uint32_t endedAtEpoch = 0) {
+void persistCompletedShift(uint32_t endedAtEpoch, bool recovered) {
+  ReportOutboxManager::ReportRecord report;
+  report.type = recovered
+      ? ReportOutboxManager::ReportType::RecoveredShiftSummary
+      : ReportOutboxManager::ReportType::ShiftSummary;
+  report.createdEpoch = endedAtEpoch;
+  report.priority = ReportOutboxManager::defaultPriority(report.type);
+  report.googleRequired = true;
+  report.telegramRequired = false;
+  report.payload = gCompletedSummary;
+  report.reportId = String(recovered ? F("REC-SHIFT-") : F("SHIFT-"));
+  report.reportId += gShift.shiftId;
+  report.reportId += '-';
+  report.reportId += endedAtEpoch;
+
+  if (!ReportOutboxManager::enqueue(report)) {
+    Logger::error(F("[SHIFT] Failed to persist completed shift in report outbox"));
+  }
+}
+
+void completeCurrentShift(bool archiveCsv, uint32_t endedAtEpoch = 0, bool recovered = false) {
   refreshCounters();
   syncOeeScheduleTime();
   const OEESnapshot oee = OEEManager::snapshot();
@@ -157,6 +178,7 @@ void completeCurrentShift(bool archiveCsv, uint32_t endedAtEpoch = 0) {
   gCompletedSummary += oee.oeePermille;
   gCompletedSummary += F("}");
 
+  persistCompletedShift(endedAtEpoch, recovered);
   if (archiveCsv) ShiftCsvManager::appendShift(gShift, oee, endedAtEpoch);
 }
 
@@ -179,7 +201,7 @@ bool recoverOneMissedShift(uint16_t expected) {
   const uint32_t boundary = nextShiftBoundaryEpoch(gShift.startedAtEpoch, nextShift);
   if (!boundary || boundary > currentShiftStart) return false;
 
-  completeCurrentShift(true, boundary);
+  completeCurrentShift(true, boundary, true);
   gShift.shiftId = nextShift;
   resetBaselines(boundary);
   Logger::warn(String(F("[SHIFT] Recovered missed boundary; advanced to ")) + Config::shiftName(nextShift - 1));
