@@ -17,6 +17,44 @@
 #include "src/Machine/MachineEngine.h"
 #include "src/Machine/ShiftManager.h"
 #include "src/HMI/HMIManager.h"
+#include "src/Reporting/ReportOutboxManager.h"
+#include "src/Reporting/LegacyReportingMigration.h"
+#include "src/Reporting/MonthRolloverManager.h"
+
+namespace {
+uint32_t gLastReportingCleanupMs = 0;
+constexpr uint32_t kReportingCleanupIntervalMs = 60000UL;
+
+void initializeReportingStorage() {
+  ReportOutboxManager::begin();
+  const LegacyReportingMigration::Result migration = LegacyReportingMigration::run();
+
+  if (migration.googleRecordsImported || migration.hourlyRecordsImported) {
+    Logger::info(String(F("[REPORT] Migrated legacy Google records: ")) +
+                 migration.googleRecordsImported +
+                 F(", hourly records: ") + migration.hourlyRecordsImported);
+  }
+  if (migration.invalidRecordsSkipped) {
+    Logger::warn(String(F("[REPORT] Invalid legacy records skipped: ")) +
+                 migration.invalidRecordsSkipped);
+  }
+  if (!migration.googleQueueCompleted || !migration.hourlyQueueCompleted) {
+    Logger::warn(F("[REPORT] Legacy migration incomplete; source files retained"));
+  }
+
+  LegacyReportingMigration::cleanupMigrationBackups();
+  MonthRolloverManager::begin();
+}
+
+void updateReportingMaintenance() {
+  MonthRolloverManager::update(TimeManager::synchronized(), TimeManager::now());
+  const uint32_t nowMs = millis();
+  if (nowMs - gLastReportingCleanupMs >= kReportingCleanupIntervalMs) {
+    gLastReportingCleanupMs = nowMs;
+    LegacyReportingMigration::cleanupMigrationBackups();
+  }
+}
+}
 
 void setup() {
   Serial1.begin(HardwareConfig::DiagnosticBaud);
@@ -29,6 +67,7 @@ void setup() {
     Logger::error(F("LittleFS mount failed"));
   }
 
+  initializeReportingStorage();
   ReliabilityManager::begin();
   Config::load();
   LossCatalog::begin();
@@ -57,6 +96,7 @@ void loop() {
   if (!ReliabilityManager::safeMode()) {
     CloudManager::update();
   }
+  updateReportingMaintenance();
   WebManager::update();
   OtaManager::update();
   SerialDiagnostics::update();
