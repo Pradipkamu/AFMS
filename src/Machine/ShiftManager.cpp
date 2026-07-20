@@ -36,15 +36,9 @@ void copyName(const char *name) {
 void refreshCounters() {
   const uint32_t totalProduction = ProductionManager::total();
   const uint32_t totalReject = RejectManager::total();
-  gShift.production = totalProduction >= gBaseProduction
-      ? totalProduction - gBaseProduction
-      : 0;
-  gShift.reject = totalReject >= gBaseReject
-      ? totalReject - gBaseReject
-      : 0;
-  gShift.good = gShift.production > gShift.reject
-      ? gShift.production - gShift.reject
-      : 0;
+  gShift.production = totalProduction >= gBaseProduction ? totalProduction - gBaseProduction : 0;
+  gShift.reject = totalReject >= gBaseReject ? totalReject - gBaseReject : 0;
+  gShift.good = gShift.production > gShift.reject ? gShift.production - gShift.reject : 0;
 }
 
 bool minuteInRange(uint16_t minute, uint16_t start, uint16_t end) {
@@ -63,27 +57,55 @@ uint16_t scheduledShiftId() {
   return 0;
 }
 
+uint32_t shiftStartEpochAtOrBefore(time_t reference, uint16_t shiftId) {
+  if (shiftId < 1 || shiftId > 3) return 0;
+  struct tm local;
+  if (!localtime_r(&reference, &local)) return 0;
+  const uint16_t startMinute = Config::shiftStartMinutes(shiftId - 1);
+  local.tm_hour = startMinute / 60U;
+  local.tm_min = startMinute % 60U;
+  local.tm_sec = 0;
+  time_t candidate = mktime(&local);
+  if (candidate > reference) {
+    local.tm_mday -= 1;
+    candidate = mktime(&local);
+  }
+  return candidate > 0 ? static_cast<uint32_t>(candidate) : 0;
+}
+
+uint32_t nextShiftBoundaryEpoch(uint32_t startedAtEpoch, uint16_t nextShiftId) {
+  if (!startedAtEpoch || nextShiftId < 1 || nextShiftId > 3) return 0;
+  const time_t reference = static_cast<time_t>(startedAtEpoch);
+  struct tm local;
+  if (!localtime_r(&reference, &local)) return 0;
+  const uint16_t startMinute = Config::shiftStartMinutes(nextShiftId - 1);
+  local.tm_hour = startMinute / 60U;
+  local.tm_min = startMinute % 60U;
+  local.tm_sec = 0;
+  time_t candidate = mktime(&local);
+  if (candidate <= reference) {
+    local.tm_mday += 1;
+    candidate = mktime(&local);
+  }
+  return candidate > 0 ? static_cast<uint32_t>(candidate) : 0;
+}
+
+String iso8601At(uint32_t epoch) {
+  if (!epoch) return TimeManager::iso8601();
+  const time_t raw = static_cast<time_t>(epoch);
+  struct tm local;
+  if (!localtime_r(&raw, &local)) return TimeManager::iso8601();
+  char buffer[32];
+  strftime(buffer, sizeof(buffer), "%Y-%m-%dT%H:%M:%S%z", &local);
+  return String(buffer);
+}
+
 uint32_t scheduledElapsedSeconds(uint16_t shiftId) {
   if (shiftId < 1 || shiftId > 3 || !TimeManager::synchronized()) return 0;
   const time_t now = TimeManager::now();
-  struct tm local;
-  if (!localtime_r(&now, &local)) return 0;
-
-  const uint16_t startMinute = Config::shiftStartMinutes(shiftId - 1);
-  const uint16_t endMinute = Config::shiftEndMinutes(shiftId - 1);
-  const uint16_t currentMinute = static_cast<uint16_t>(local.tm_hour * 60U + local.tm_min);
-  int32_t elapsedMinutes = 0;
-
-  if (startMinute < endMinute) {
-    elapsedMinutes = static_cast<int32_t>(currentMinute) - startMinute;
-  } else {
-    elapsedMinutes = currentMinute >= startMinute
-                         ? static_cast<int32_t>(currentMinute) - startMinute
-                         : static_cast<int32_t>(currentMinute) + 1440 - startMinute;
-  }
-
-  if (elapsedMinutes < 0) elapsedMinutes = 0;
-  return static_cast<uint32_t>(elapsedMinutes) * 60UL + static_cast<uint32_t>(local.tm_sec);
+  const uint32_t startEpoch = shiftStartEpochAtOrBefore(now, shiftId);
+  if (!startEpoch || static_cast<uint32_t>(now) < startEpoch) return 0;
+  return static_cast<uint32_t>(now) - startEpoch;
 }
 
 void syncOeeScheduleTime() {
@@ -91,11 +113,11 @@ void syncOeeScheduleTime() {
   OEEManager::setScheduledShiftElapsedSeconds(scheduledElapsedSeconds(gShift.shiftId));
 }
 
-void completeCurrentShift(bool archiveCsv) {
+void completeCurrentShift(bool archiveCsv, uint32_t endedAtEpoch = 0) {
   refreshCounters();
   syncOeeScheduleTime();
   const OEESnapshot oee = OEEManager::snapshot();
-  const uint32_t endedAtEpoch = static_cast<uint32_t>(TimeManager::now());
+  if (!endedAtEpoch) endedAtEpoch = static_cast<uint32_t>(TimeManager::now());
 
   gCompletedSummary = F("{\"record_type\":\"shift_summary\",\"api_token\":\"");
   gCompletedSummary += jsonEscape(Config::apiToken());
@@ -104,8 +126,10 @@ void completeCurrentShift(bool archiveCsv) {
   gCompletedSummary += F("\",\"machine_name\":\"");
   gCompletedSummary += jsonEscape(Config::machineName());
   gCompletedSummary += F("\",\"timestamp\":\"");
-  gCompletedSummary += TimeManager::iso8601();
-  gCompletedSummary += F("\",\"shift\":");
+  gCompletedSummary += iso8601At(endedAtEpoch);
+  gCompletedSummary += F("\",\"period_end_epoch\":");
+  gCompletedSummary += endedAtEpoch;
+  gCompletedSummary += F(",\"shift\":");
   gCompletedSummary += gShift.shiftId;
   gCompletedSummary += F(",\"shift_name\":\"");
   gCompletedSummary += jsonEscape(Config::shiftName(gShift.shiftId - 1));
@@ -136,14 +160,30 @@ void completeCurrentShift(bool archiveCsv) {
   if (archiveCsv) ShiftCsvManager::appendShift(gShift, oee, endedAtEpoch);
 }
 
-void resetBaselines() {
+void resetBaselines(uint32_t startedAtEpoch = 0) {
   gBaseProduction = ProductionManager::total();
   gBaseReject = RejectManager::total();
   gShift.production = gShift.reject = gShift.good = 0;
-  gShift.startedAtEpoch = static_cast<uint32_t>(TimeManager::now());
+  gShift.startedAtEpoch = startedAtEpoch ? startedAtEpoch : static_cast<uint32_t>(TimeManager::now());
   OEEManager::resetShift();
   OEEManager::setTargetQuantity(gShift.targetQuantity);
   syncOeeScheduleTime();
+}
+
+bool recoverOneMissedShift(uint16_t expected) {
+  if (!gShift.startedAtEpoch || gCompletedSummary.length()) return false;
+  const uint32_t currentShiftStart = shiftStartEpochAtOrBefore(TimeManager::now(), expected);
+  if (!currentShiftStart || gShift.startedAtEpoch >= currentShiftStart) return false;
+
+  const uint16_t nextShift = gShift.shiftId >= 3 ? 1 : gShift.shiftId + 1;
+  const uint32_t boundary = nextShiftBoundaryEpoch(gShift.startedAtEpoch, nextShift);
+  if (!boundary || boundary > currentShiftStart) return false;
+
+  completeCurrentShift(true, boundary);
+  gShift.shiftId = nextShift;
+  resetBaselines(boundary);
+  Logger::warn(String(F("[SHIFT] Recovered missed boundary; advanced to ")) + Config::shiftName(nextShift - 1));
+  return true;
 }
 }
 
@@ -168,16 +208,17 @@ void ShiftManager::update() {
   if (!gScheduleInitialized) {
     gScheduleInitialized = true;
     gShift.shiftId = expected;
-    resetBaselines();
+    resetBaselines(shiftStartEpochAtOrBefore(TimeManager::now(), expected));
     Logger::info(String(F("[SHIFT] Active shift: ")) + Config::shiftName(expected - 1));
     return;
   }
 
-  if (expected != gShift.shiftId) setShift(expected);
+  if (recoverOneMissedShift(expected)) return;
+  if (expected != gShift.shiftId && !gCompletedSummary.length()) setShift(expected);
 }
 
 void ShiftManager::setShift(uint16_t shiftId) {
-  if (shiftId == 0 || shiftId > 3 || shiftId == gShift.shiftId) return;
+  if (shiftId == 0 || shiftId > 3 || shiftId == gShift.shiftId || gCompletedSummary.length()) return;
   completeCurrentShift(true);
   gShift.shiftId = shiftId;
   resetBaselines();
