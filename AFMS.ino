@@ -11,6 +11,7 @@
 #include "src/Storage/RuntimeStateManager.h"
 #include "src/Communication/WiFiManager.h"
 #include "src/Communication/CloudManager.h"
+#include "src/Communication/TimeManager.h"
 #include "src/Communication/ReconnectManager.h"
 #include "src/Communication/OtaManager.h"
 #include "src/Communication/WebManager.h"
