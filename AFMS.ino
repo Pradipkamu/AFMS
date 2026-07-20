@@ -21,6 +21,7 @@
 #include "src/Reporting/ReportOutboxManager.h"
 #include "src/Reporting/LegacyReportingMigration.h"
 #include "src/Reporting/MonthRolloverManager.h"
+#include "src/ProductionIO/ProductionIO.h"
 
 namespace {
 uint32_t gLastReportingCleanupMs = 0;
@@ -76,6 +77,7 @@ void setup() {
   SystemHealth::begin();
   WiFiManager::begin(Config::wifiSsid(), Config::wifiPassword());
   MachineEngine::begin();
+  ProductionIO::begin();
   CloudManager::begin();
   ReconnectManager::begin();
   ShiftManager::begin();
@@ -91,6 +93,7 @@ void loop() {
   WiFiManager::update();
   ReconnectManager::update();
   MachineEngine::update();
+  ProductionIO::update();
   ShiftManager::update();
   RuntimeStateManager::update();
   HMIManager::update();
