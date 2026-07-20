@@ -16,9 +16,9 @@
   "shift_1_end": "16:00",
   "shift_2_name": "B",
   "shift_2_start": "16:00",
-  "shift_2_end": "24:00",
+  "shift_2_end": "00:00",
   "shift_3_name": "C",
-  "shift_3_start": "24:00",
+  "shift_3_start": "00:00",
   "shift_3_end": "08:00",
   "runtime_state": {
     "enabled": true,
