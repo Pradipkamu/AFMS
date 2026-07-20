@@ -144,9 +144,9 @@ bool MachineEngine::acknowledgeLossCode(uint16_t lossCode) {
 
   const uint32_t idleNow = IdleManager::idleSeconds();
   const uint32_t duration = idleNow >= gLossStartIdleSeconds ? idleNow - gLossStartIdleSeconds : 0;
-  OEEManager::recordLoss(lossCode, duration);
-  EventBus::publish(EventType::LossSelected, lossCode, duration);
 
+  // Release the machine first. No reporting, filesystem, logging, or network
+  // work is allowed to delay the physical alarm clear or input re-enable.
   gLossClassifiedForCurrentIdle = true;
   AlarmManager::clear();
   ProductionManager::setEnabled(true);
@@ -154,9 +154,14 @@ bool MachineEngine::acknowledgeLossCode(uint16_t lossCode) {
   gHasProductionPulse = false;
   restartLossMonitoring(millis());
   gState = MachineState::Ready;
+  gWasAlarmActive = false;
   gLastAcceptedLossCode = lossCode;
   gLastLossDurationSeconds = duration;
-  Logger::info(F("[LOSS] Loss captured; monitoring restarted immediately"));
+
+  // Bookkeeping is intentionally performed only after the machine is ready.
+  OEEManager::recordLoss(lossCode, duration);
+  EventBus::publish(EventType::LossSelected, lossCode, duration);
+  Logger::info(F("[LOSS] Machine released; reporting queued asynchronously"));
   return true;
 }
 
