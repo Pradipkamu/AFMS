@@ -4,7 +4,8 @@
 #include "../Core/Config.h"
 #include "../Core/LossCatalog.h"
 #include "../Core/Logger.h"
-#include "../Storage/ShiftCsvManager.h"
+#include "../Reporting/ReportOutboxManager.h"
+#include "../Reporting/TelegramOutboxDelivery.h"
 #include <ESP8266HTTPClient.h>
 #include <WiFiClientSecureBearSSL.h>
 #include <LittleFS.h>
@@ -12,20 +13,11 @@
 namespace {
 bool gVerified = false;
 bool gVerificationAttempted = false;
-bool gReadyMessageSent = false;
-uint32_t gSuccess = 0;
-uint32_t gFailure = 0;
+uint32_t gTransportSuccess = 0;
+uint32_t gTransportFailure = 0;
+uint32_t gEnqueueFailure = 0;
 uint32_t gLastVerifyAttemptMs = 0;
-uint32_t gLastMessageAttemptMs = 0;
-uint16_t gPendingLossCode = 0;
-uint32_t gPendingLossDurationSeconds = 0;
-uint16_t gLastSentLossCode = 0;
-uint32_t gLastSentLossDurationSeconds = 0;
-uint32_t gLastSentLossMs = 0;
-String gPendingMonthlyReport;
 constexpr uint32_t kVerifyRetryMs = 60000UL;
-constexpr uint32_t kMessageRetryMs = 30000UL;
-constexpr uint32_t kLossDuplicateWindowMs = 60000UL;
 char gBotToken[96] = "";
 char gChatId[32] = "";
 
@@ -75,24 +67,14 @@ bool request(const String &url, String *response = nullptr) {
   client.setInsecure();
   client.setTimeout(10000);
   HTTPClient http;
-  if (!http.begin(client, url)) {
-    Logger::warn(F("[TELEGRAM] HTTP begin failed"));
-    return false;
-  }
+  if (!http.begin(client, url)) return false;
   http.setTimeout(10000);
   http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
   const int code = http.GET();
   const String body = code > 0 ? http.getString() : String();
   http.end();
   if (response) *response = body;
-
   Logger::info(String(F("[TELEGRAM] HTTP status: ")) + code);
-  if (body.length()) {
-    String preview = body;
-    if (preview.length() > 300) preview = preview.substring(0, 300) + F("...");
-    Logger::info(String(F("[TELEGRAM] Response: ")) + preview);
-  }
-
   return code >= 200 && code < 300 && body.indexOf(F("\"ok\":true")) >= 0;
 }
 
@@ -111,36 +93,31 @@ bool verifyBot() {
   gVerificationAttempted = true;
   gLastVerifyAttemptMs = millis();
   gVerified = ok;
+  TelegramOutboxDelivery::setVerified(ok);
   if (ok) Logger::info(F("[TELEGRAM] Bot connected"));
   else Logger::warn(F("[TELEGRAM] Bot verification failed"));
   return ok;
 }
 
-bool sendText(const String &message) {
+bool sendTextTransport(const String &message) {
   if (!TelegramClient::configured() || !WiFiManager::connected()) return false;
-  gLastMessageAttemptMs = millis();
   String url = apiUrl(F("sendMessage"));
   url += F("?chat_id=");
   url += urlEncode(gChatId);
   url += F("&text=");
   url += urlEncode(message);
   const bool ok = request(url);
-  if (ok) {
-    ++gSuccess;
-    Logger::info(F("[TELEGRAM] Message sent"));
-  } else {
-    ++gFailure;
-    Logger::warn(F("[TELEGRAM] Message failed; retry in 30 seconds"));
-  }
+  if (ok) ++gTransportSuccess;
+  else ++gTransportFailure;
   return ok;
 }
 
-bool sendDocument(const String &path) {
+bool sendDocumentTransport(const String &path, const String &caption) {
   if (!TelegramClient::configured() || !WiFiManager::connected()) return false;
-  gLastMessageAttemptMs = millis();
   File file = LittleFS.open(path, "r");
   if (!file) {
-    Logger::warn(F("[TELEGRAM] CSV file not found"));
+    Logger::warn(String(F("[TELEGRAM] Document not found: ")) + path);
+    ++gTransportFailure;
     return false;
   }
 
@@ -150,13 +127,13 @@ bool sendDocument(const String &path) {
   if (slash >= 0) filename = filename.substring(slash + 1);
 
   String prefix;
-  prefix.reserve(256);
+  prefix.reserve(320);
   prefix += F("--"); prefix += boundary; prefix += F("\r\n");
   prefix += F("Content-Disposition: form-data; name=\"chat_id\"\r\n\r\n");
   prefix += gChatId;
   prefix += F("\r\n--"); prefix += boundary; prefix += F("\r\n");
   prefix += F("Content-Disposition: form-data; name=\"caption\"\r\n\r\n");
-  prefix += F("AFMS monthly shift report - "); prefix += Config::machineName();
+  prefix += caption.length() ? caption : String(F("AFMS monthly report - ")) + Config::machineName();
   prefix += F("\r\n--"); prefix += boundary; prefix += F("\r\n");
   prefix += F("Content-Disposition: form-data; name=\"document\"; filename=\"");
   prefix += filename;
@@ -171,7 +148,7 @@ bool sendDocument(const String &path) {
   client.setTimeout(15000);
   if (!client.connect("api.telegram.org", 443)) {
     file.close();
-    Logger::warn(F("[TELEGRAM] Document connection failed"));
+    ++gTransportFailure;
     return false;
   }
 
@@ -201,94 +178,19 @@ bool sendDocument(const String &path) {
   }
   client.stop();
 
-  if (response.length()) {
-    String preview = response;
-    if (preview.length() > 400) preview = preview.substring(preview.length() - 400);
-    Logger::info(String(F("[TELEGRAM] Document response: ")) + preview);
-  }
-
-  const bool ok = response.indexOf(F(" 200 ")) >= 0 && response.indexOf(F("\"ok\":true")) >= 0;
+  const bool ok = response.indexOf(F(" 200 ")) >= 0 &&
+                  response.indexOf(F("\"ok\":true")) >= 0;
   if (ok) {
-    ++gSuccess;
-    Logger::info(String(F("[TELEGRAM] Monthly CSV sent: ")) + filename);
+    ++gTransportSuccess;
+    Logger::info(String(F("[TELEGRAM] Document sent: ")) + filename);
   } else {
-    ++gFailure;
-    Logger::warn(F("[TELEGRAM] Monthly CSV send failed; retry in 30 seconds"));
+    ++gTransportFailure;
+    Logger::warn(F("[TELEGRAM] Document send failed"));
   }
   return ok;
 }
-}
 
-void TelegramClient::begin() {
-  gVerified = false;
-  gVerificationAttempted = false;
-  gReadyMessageSent = false;
-  gLastMessageAttemptMs = 0;
-  gPendingLossCode = 0;
-  gPendingLossDurationSeconds = 0;
-  gLastSentLossCode = 0;
-  gLastSentLossDurationSeconds = 0;
-  gLastSentLossMs = 0;
-  gPendingMonthlyReport = "";
-  loadTelegramConfig();
-  if (!configured()) Logger::warn(F("[TELEGRAM] Bot token or chat ID missing"));
-  else Logger::info(F("[TELEGRAM] Configuration loaded"));
-}
-
-void TelegramClient::update() {
-  if (!configured() || !WiFiManager::connected()) return;
-
-  if (!gVerified) {
-    if (!gVerificationAttempted || millis() - gLastVerifyAttemptMs >= kVerifyRetryMs) verifyBot();
-    if (!gVerified) return;
-  }
-
-  if (gLastMessageAttemptMs && millis() - gLastMessageAttemptMs < kMessageRetryMs) return;
-
-  if (!gReadyMessageSent) {
-    gReadyMessageSent = sendMachineReady();
-    return;
-  }
-
-  if (gPendingLossCode >= 1 && gPendingLossCode <= 16) {
-    if (sendLoss(gPendingLossCode, gPendingLossDurationSeconds)) {
-      gPendingLossCode = 0;
-      gPendingLossDurationSeconds = 0;
-    }
-    return;
-  }
-
-  if (!gPendingMonthlyReport.length()) {
-    ShiftCsvManager::consumeDailyReportReady(gPendingMonthlyReport);
-  }
-  if (gPendingMonthlyReport.length() && sendDocument(gPendingMonthlyReport)) {
-    gPendingMonthlyReport = "";
-  }
-}
-
-bool TelegramClient::configured() { return gBotToken[0] && gChatId[0]; }
-bool TelegramClient::connected() { return gVerified; }
-
-bool TelegramClient::sendMachineReady() {
-  String message = F("AFMS machine ready\nMachine: ");
-  message += Config::machineName();
-  message += F("\nMachine ID: ");
-  message += Config::machineId();
-  message += F("\nTime: ");
-  message += TimeManager::iso8601();
-  return sendText(message);
-}
-
-bool TelegramClient::sendLoss(uint16_t lossCode, uint32_t durationSeconds) {
-  const uint32_t nowMs = millis();
-  if (gLastSentLossCode == lossCode &&
-      gLastSentLossDurationSeconds == durationSeconds &&
-      gLastSentLossMs != 0 &&
-      nowMs - gLastSentLossMs < kLossDuplicateWindowMs) {
-    Logger::warn(F("[TELEGRAM] Duplicate loss notification suppressed"));
-    return true;
-  }
-
+String lossMessage(uint16_t lossCode, uint32_t durationSeconds) {
   String message = F("AFMS loss recorded\nMachine: ");
   message += Config::machineName();
   message += F("\nLoss: ");
@@ -299,25 +201,73 @@ bool TelegramClient::sendLoss(uint16_t lossCode, uint32_t durationSeconds) {
   message += durationSeconds;
   message += F(" sec\nTime: ");
   message += TimeManager::iso8601();
+  return message;
+}
+}
 
-  if (!sendText(message)) return false;
+void TelegramClient::begin() {
+  gVerified = false;
+  gVerificationAttempted = false;
+  gLastVerifyAttemptMs = 0;
+  loadTelegramConfig();
+  TelegramOutboxDelivery::begin();
+  if (!configured()) Logger::warn(F("[TELEGRAM] Bot token or chat ID missing"));
+  else Logger::info(F("[TELEGRAM] Configuration loaded"));
+}
 
-  gLastSentLossCode = lossCode;
-  gLastSentLossDurationSeconds = durationSeconds;
-  gLastSentLossMs = nowMs;
-  return true;
+void TelegramClient::update() {
+  if (!configured() || !WiFiManager::connected()) {
+    gVerified = false;
+    TelegramOutboxDelivery::onWifiDisconnected();
+    return;
+  }
+
+  if (!gVerified) {
+    if (!gVerificationAttempted || millis() - gLastVerifyAttemptMs >= kVerifyRetryMs) verifyBot();
+    if (!gVerified) return;
+  }
+
+  TelegramOutboxDelivery::update(true, sendTextTransport, sendDocumentTransport);
+}
+
+bool TelegramClient::configured() { return gBotToken[0] && gChatId[0]; }
+bool TelegramClient::connected() { return gVerified && TelegramOutboxDelivery::verified(); }
+
+bool TelegramClient::sendMachineReady() {
+  Logger::warn(F("[TELEGRAM] Machine Ready reporting is disabled in AFMS v3.1"));
+  return false;
+}
+
+bool TelegramClient::sendLoss(uint16_t lossCode, uint32_t durationSeconds) {
+  if (lossCode < 1 || lossCode > 16) return false;
+  return sendTextTransport(lossMessage(lossCode, durationSeconds));
 }
 
 void TelegramClient::queueLoss(uint16_t lossCode, uint32_t durationSeconds) {
   if (lossCode < 1 || lossCode > 16) return;
-  if (gPendingLossCode == lossCode &&
-      gPendingLossDurationSeconds == durationSeconds) {
-    Logger::warn(F("[TELEGRAM] Duplicate queued loss suppressed"));
-    return;
+  const uint32_t epoch = static_cast<uint32_t>(TimeManager::now());
+  ReportOutboxManager::ReportRecord report;
+  report.type = ReportOutboxManager::ReportType::LossEvent;
+  report.createdEpoch = epoch;
+  report.priority = ReportOutboxManager::defaultPriority(report.type);
+  report.googleRequired = false;
+  report.telegramRequired = true;
+  report.payload = lossMessage(lossCode, durationSeconds);
+  report.reportId = F("TG-LOSS-");
+  report.reportId += epoch;
+  report.reportId += '-';
+  report.reportId += lossCode;
+  report.reportId += '-';
+  report.reportId += durationSeconds;
+  if (!ReportOutboxManager::enqueue(report)) {
+    ++gEnqueueFailure;
+    Logger::error(F("[TELEGRAM] Failed to persist loss notification"));
   }
-  gPendingLossCode = lossCode;
-  gPendingLossDurationSeconds = durationSeconds;
 }
 
-uint32_t TelegramClient::successCount() { return gSuccess; }
-uint32_t TelegramClient::failureCount() { return gFailure; }
+uint32_t TelegramClient::successCount() {
+  return TelegramOutboxDelivery::successCount();
+}
+uint32_t TelegramClient::failureCount() {
+  return TelegramOutboxDelivery::failureCount() + gTransportFailure + gEnqueueFailure;
+}
