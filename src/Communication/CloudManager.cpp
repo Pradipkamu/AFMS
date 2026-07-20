@@ -21,6 +21,7 @@ bool gHourlyScheduleInitialized = false;
 String gPendingHourlyPayload;
 uint32_t gPendingHourlyNotBeforeEpoch = 0;
 uint32_t gEnqueueFailure = 0;
+uint32_t gLossSequence = 0;
 
 String jsonEscape(const char *value) {
   String out;
@@ -75,8 +76,8 @@ String buildLossPayload(const Event &event) {
   const ShiftSnapshot shift = ShiftManager::snapshot();
   const uint16_t lossCode = static_cast<uint16_t>(event.value);
   String payload;
-  payload.reserve(608);
-  payload += F("{\"record_type\":\"event\",\"api_token\":\"");
+  payload.reserve(672);
+  payload += F("{\"record_type\":\"event\",\"report_type\":\"loss_event\",\"api_token\":\"");
   payload += jsonEscape(Config::apiToken());
   payload += F("\",\"machine_id\":\""); payload += jsonEscape(Config::machineId());
   payload += F("\",\"machine_name\":\""); payload += jsonEscape(Config::machineName());
@@ -99,12 +100,37 @@ String buildLossPayload(const Event &event) {
   return payload;
 }
 
+bool responseReportsFailure(const String &body) {
+  if (!body.length()) return false;
+  String normalized = body;
+  normalized.toLowerCase();
+  return normalized.indexOf(F("\"ok\":false")) >= 0 ||
+         normalized.indexOf(F("\"success\":false")) >= 0 ||
+         normalized.indexOf(F("\"status\":\"error\"")) >= 0 ||
+         normalized.indexOf(F("\"error\":")) >= 0;
+}
+
 bool upload(const String &payload) {
   const char *url = Config::googleWebAppUrl();
-  if (!url || !url[0]) return false;
+  if (!url || !url[0]) {
+    Logger::error(F("[GOOGLE] Web App URL is missing"));
+    return false;
+  }
+
   const HttpResult result = HttpClientManager::postJson(url, payload);
   Logger::info(String(F("[GOOGLE] HTTP status: ")) + result.code);
-  return result.success();
+  if (result.body.length()) {
+    String preview = result.body;
+    if (preview.length() > 400) preview = preview.substring(0, 400) + F("...");
+    Logger::info(String(F("[GOOGLE] Response: ")) + preview);
+  }
+
+  if (!result.success()) return false;
+  if (responseReportsFailure(result.body)) {
+    Logger::error(F("[GOOGLE] Application rejected payload; report retained for retry"));
+    return false;
+  }
+  return true;
 }
 
 bool enqueueGoogle(ReportOutboxManager::ReportType type,
@@ -119,9 +145,13 @@ bool enqueueGoogle(ReportOutboxManager::ReportType type,
   report.telegramRequired = false;
   report.payload = payload;
   report.reportId = reportId;
-  if (ReportOutboxManager::enqueue(report)) return true;
+  if (ReportOutboxManager::enqueue(report)) {
+    Logger::info(String(F("[GOOGLE] Outbox queued: ")) + reportId +
+                 F(" type=") + ReportOutboxManager::typeName(type));
+    return true;
+  }
   ++gEnqueueFailure;
-  Logger::error(F("[GOOGLE] Failed to persist report in outbox"));
+  Logger::error(String(F("[GOOGLE] Failed to persist report in outbox: ")) + reportId);
   return false;
 }
 
@@ -242,6 +272,7 @@ void CloudManager::begin() {
   loadFirstPendingHourly();
   gLastQueuedEpochHour = 0;
   gHourlyScheduleInitialized = false;
+  gLossSequence = 0;
 }
 
 void CloudManager::update() {
@@ -252,8 +283,17 @@ void CloudManager::update() {
   Event event;
   while (EventBus::next(event)) {
     if (event.type != EventType::LossSelected || event.value < 1 || event.value > 16) continue;
-    const uint32_t epoch = static_cast<uint32_t>(TimeManager::now());
-    String id = F("LOSS-"); id += epoch; id += '-'; id += event.value;
+    const time_t now = TimeManager::now();
+    const uint32_t epoch = now > 0 ? static_cast<uint32_t>(now) : 0;
+    String id = F("LOSS-");
+    id += epoch;
+    id += '-';
+    id += event.value;
+    id += '-';
+    id += ++gLossSequence;
+
+    Logger::info(String(F("[LOSS] Cloud event received code=")) + event.value +
+                 F(" duration=") + event.durationSeconds + F(" sec"));
     enqueueGoogle(ReportOutboxManager::ReportType::LossEvent,
                   buildLossPayload(event), epoch, id);
     TelegramClient::queueLoss(static_cast<uint16_t>(event.value), event.durationSeconds);
