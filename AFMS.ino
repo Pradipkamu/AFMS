@@ -11,6 +11,7 @@
 #include "src/Storage/RuntimeStateManager.h"
 #include "src/Communication/WiFiManager.h"
 #include "src/Communication/CloudManager.h"
+#include "src/Communication/ReconnectManager.h"
 #include "src/Communication/OtaManager.h"
 #include "src/Communication/WebManager.h"
 #include "src/Machine/MachineEngine.h"
@@ -36,6 +37,7 @@ void setup() {
   WiFiManager::begin(Config::wifiSsid(), Config::wifiPassword());
   MachineEngine::begin();
   CloudManager::begin();
+  ReconnectManager::begin();
   ShiftManager::begin();
   RuntimeStateManager::begin();
   HMIManager::begin();
@@ -47,6 +49,7 @@ void setup() {
 void loop() {
   ReliabilityManager::update();
   WiFiManager::update();
+  ReconnectManager::update();
   MachineEngine::update();
   ShiftManager::update();
   RuntimeStateManager::update();
