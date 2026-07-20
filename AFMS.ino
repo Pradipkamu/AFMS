@@ -24,7 +24,10 @@
 
 namespace {
 uint32_t gLastReportingCleanupMs = 0;
+uint32_t gCloudResumeMs = 0;
+MachineState gLastMachineState = MachineState::Ready;
 constexpr uint32_t kReportingCleanupIntervalMs = 60000UL;
+constexpr uint32_t kMachineTransitionCloudPauseMs = 1500UL;
 
 void initializeReportingStorage() {
   ReportOutboxManager::begin();
@@ -55,6 +58,18 @@ void updateReportingMaintenance() {
     LegacyReportingMigration::cleanupMigrationBackups();
   }
 }
+
+void protectMachineTransitionFromCloud() {
+  const MachineState currentState = MachineEngine::snapshot().state;
+  if (currentState == gLastMachineState) return;
+  gLastMachineState = currentState;
+  gCloudResumeMs = millis() + kMachineTransitionCloudPauseMs;
+  Logger::info(F("[CONTROL] Cloud transport paused for machine-state transition"));
+}
+
+bool cloudTransportAllowed() {
+  return gCloudResumeMs == 0 || static_cast<int32_t>(millis() - gCloudResumeMs) >= 0;
+}
 }
 
 void setup() {
@@ -84,6 +99,7 @@ void setup() {
   WebManager::begin();
   OtaManager::begin(Config::machineId());
   SerialDiagnostics::begin();
+  gLastMachineState = MachineEngine::snapshot().state;
 }
 
 void loop() {
@@ -94,9 +110,12 @@ void loop() {
   ShiftManager::update();
   RuntimeStateManager::update();
   HMIManager::update();
-  if (!ReliabilityManager::safeMode()) {
+
+  protectMachineTransitionFromCloud();
+  if (!ReliabilityManager::safeMode() && cloudTransportAllowed()) {
     CloudManager::update();
   }
+
   updateReportingMaintenance();
   WebManager::update();
   OtaManager::update();
