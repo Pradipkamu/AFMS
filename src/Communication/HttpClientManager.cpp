@@ -7,6 +7,16 @@ namespace {
 uint16_t gTimeoutMs = 10000;
 uint32_t gFailures = 0;
 
+void normalizeBenignGoogleResponse(String &body) {
+  // Apps Script handlers commonly return an error member even on success,
+  // for example {"success":true,"error":null}. CloudManager must not treat
+  // these empty values as an application failure.
+  body.replace(F("\"error\":null"), F("\"error_cleared\":true"));
+  body.replace(F("\"error\": null"), F("\"error_cleared\":true"));
+  body.replace(F("\"error\":\"\""), F("\"error_cleared\":true"));
+  body.replace(F("\"error\": \"\""), F("\"error_cleared\":true"));
+}
+
 HttpResult request(const char *url, const String *payload) {
   if (!url || !url[0] || !WiFiManager::connected()) return {-1, String()};
 
@@ -51,6 +61,7 @@ HttpResult request(const char *url, const String *payload) {
     }
   }
 
+  if (code >= 200 && code < 300) normalizeBenignGoogleResponse(body);
   http.end();
 
   if (code < 200 || code >= 300) ++gFailures;
