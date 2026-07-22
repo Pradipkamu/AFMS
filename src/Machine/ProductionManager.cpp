@@ -3,7 +3,7 @@
 namespace {
 constexpr uint8_t kQueueSize = 8;
 volatile uint32_t gTotal = 0;
-volatile uint32_t gPulseTimesMs[kQueueSize] = {0};
+volatile uint32_t gPulseTimesUs[kQueueSize] = {0};
 volatile uint8_t gHead = 0;
 volatile uint8_t gTail = 0;
 volatile uint32_t gLastPulseUs = 0;
@@ -14,7 +14,7 @@ uint32_t gDebounceUs = 50000UL;
 void IRAM_ATTR onPulse() {
   if (!gEnabled) return;
   const uint32_t nowUs = micros();
-  if (nowUs - gLastPulseUs < gDebounceUs) return;
+  if (gLastPulseUs != 0 && nowUs - gLastPulseUs < gDebounceUs) return;
   gLastPulseUs = nowUs;
 
   const uint8_t next = static_cast<uint8_t>((gHead + 1U) % kQueueSize);
@@ -22,27 +22,30 @@ void IRAM_ATTR onPulse() {
     ++gDropped;
     return;
   }
-  gPulseTimesMs[gHead] = nowUs / 1000UL;
+  gPulseTimesUs[gHead] = nowUs;
   gHead = next;
 }
 }
 
 void ProductionManager::begin(uint8_t pin, uint32_t debounceUs) {
+  noInterrupts();
   gDebounceUs = debounceUs;
   gEnabled = true;
   gHead = gTail = 0;
+  gLastPulseUs = 0;
   gDropped = 0;
+  interrupts();
   pinMode(pin, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(pin), onPulse, FALLING);
 }
 
-bool ProductionManager::consumePulse(uint32_t &timestampMs) {
+bool ProductionManager::consumePulse(uint32_t &timestampUs) {
   noInterrupts();
   if (gTail == gHead) {
     interrupts();
     return false;
   }
-  timestampMs = gPulseTimesMs[gTail];
+  timestampUs = gPulseTimesUs[gTail];
   gTail = static_cast<uint8_t>((gTail + 1U) % kQueueSize);
   interrupts();
   return true;
@@ -65,6 +68,7 @@ void ProductionManager::restore(uint32_t total) {
   noInterrupts();
   gTotal = total;
   gHead = gTail = 0;
+  gLastPulseUs = 0;
   interrupts();
 }
 
@@ -74,6 +78,7 @@ void ProductionManager::setEnabled(bool enabled) {
   noInterrupts();
   gEnabled = enabled;
   if (!enabled) gHead = gTail = 0;
+  gLastPulseUs = 0;
   interrupts();
 }
 
