@@ -29,6 +29,10 @@ bool occursBeforeOrSame(uint32_t first, uint32_t second) {
   return static_cast<int32_t>(first - second) <= 0;
 }
 
+uint32_t eventUsToMillis(uint32_t eventUs, uint32_t nowUs, uint32_t nowMs) {
+  return nowMs - ((nowUs - eventUs) / 1000UL);
+}
+
 void resetIdleTracking() {
   IdleManager::onProduction();
   gLossClassifiedForCurrentIdle = false;
@@ -66,7 +70,7 @@ void processCycleEnd(uint32_t timestampMs) {
   if (CycleManager::onCycleEnd(timestampMs)) {
     Logger::info(F("[CYCLE END] Valid cycle completion received"));
   } else {
-    Logger::warn(F("[CYCLE END] Ignored because no matching active cycle exists"));
+    Logger::warn(F("[CYCLE END] Ignored: no active cycle or interval too short"));
   }
 }
 }
@@ -83,7 +87,8 @@ void MachineEngine::begin() {
   const bool useCycleEnd = Config::cycleEndEnabled();
   CycleManager::begin(HardwareConfig::DefaultCycleTimeMs,
                       useCycleEnd,
-                      Config::cycleEndTimeoutSeconds() * 1000UL);
+                      Config::cycleEndTimeoutSeconds() * 1000UL,
+                      Config::cycleEndMinimumMs());
   if (useCycleEnd) {
     CycleEndManager::begin(HardwareConfig::CycleEndInputPin,
                            Config::cycleEndActiveHigh(),
@@ -110,19 +115,20 @@ void MachineEngine::begin() {
 
 void MachineEngine::update() {
   const uint32_t nowMs = millis();
+  const uint32_t nowUs = micros();
 
-  uint32_t startTimeMs = 0;
-  uint32_t endTimeMs = 0;
-  bool hasStart = ProductionManager::consumePulse(startTimeMs);
-  bool hasEnd = CycleManager::cycleEndEnabled() && CycleEndManager::consumePulse(endTimeMs);
+  uint32_t startTimeUs = 0;
+  uint32_t endTimeUs = 0;
+  bool hasStart = ProductionManager::consumePulse(startTimeUs);
+  bool hasEnd = CycleManager::cycleEndEnabled() && CycleEndManager::consumePulse(endTimeUs);
 
   while (hasStart || hasEnd) {
-    if (hasStart && (!hasEnd || occursBeforeOrSame(startTimeMs, endTimeMs))) {
-      processCycleStart(startTimeMs);
-      hasStart = ProductionManager::consumePulse(startTimeMs);
+    if (hasStart && (!hasEnd || occursBeforeOrSame(startTimeUs, endTimeUs))) {
+      processCycleStart(eventUsToMillis(startTimeUs, nowUs, nowMs));
+      hasStart = ProductionManager::consumePulse(startTimeUs);
     } else {
-      processCycleEnd(endTimeMs);
-      hasEnd = CycleEndManager::consumePulse(endTimeMs);
+      processCycleEnd(eventUsToMillis(endTimeUs, nowUs, nowMs));
+      hasEnd = CycleEndManager::consumePulse(endTimeUs);
     }
   }
 
@@ -139,15 +145,19 @@ void MachineEngine::update() {
   }
 
   const bool idleNow = gLossMonitoringActive && IdleManager::idle();
+  const bool waitingForStart = CycleManager::completionReason() ==
+                               CycleManager::CompletionReason::WaitingForStart;
   if (idleNow && !gWasIdle) {
     gLossStartIdleSeconds = IdleManager::idleSeconds();
     gLossClassifiedForCurrentIdle = false;
-    gState = MachineState::Idle;
-    EventBus::publish(EventType::IdleStarted);
+    if (!waitingForStart) {
+      gState = MachineState::Idle;
+      EventBus::publish(EventType::IdleStarted);
+    }
     if (CycleManager::completionReason() == CycleManager::CompletionReason::CycleEndTimeout) {
       Logger::warn(F("[CYCLE END] Timeout completed the cycle; idle timing started"));
     }
-  } else if (!idleNow && gWasIdle) {
+  } else if (!idleNow && gWasIdle && !waitingForStart) {
     EventBus::publish(EventType::IdleEnded);
   }
   gWasIdle = idleNow;
@@ -157,7 +167,8 @@ void MachineEngine::update() {
       AlarmManager::set(true);
       ProductionManager::setEnabled(false);
       RejectManager::setEnabled(false);
-      Logger::warn(F("[LOSS] Production and reject counting blocked until loss is acknowledged"));
+      if (CycleManager::cycleEndEnabled()) CycleEndManager::setEnabled(false);
+      Logger::warn(F("[LOSS] Production, reject and cycle end capture blocked until loss is acknowledged"));
     }
     gState = MachineState::LossRequired;
   }
@@ -216,12 +227,17 @@ bool MachineEngine::acknowledgeLossCode(uint16_t lossCode) {
   ProductionManager::setEnabled(true);
   RejectManager::setEnabled(true);
   gHasProductionPulse = false;
-  if (CycleManager::cycleEndEnabled()) monitorWaitingForStart(millis());
-  else restartFixedTimeMonitoring(millis());
+  if (CycleManager::cycleEndEnabled()) {
+    CycleEndManager::setEnabled(true);
+    CycleEndManager::clearPending();
+    monitorWaitingForStart(millis());
+  } else {
+    restartFixedTimeMonitoring(millis());
+  }
   gState = MachineState::Ready;
   gLastAcceptedLossCode = lossCode;
   gLastLossDurationSeconds = duration;
-  Logger::info(F("[LOSS] Loss captured; next-start monitoring active"));
+  Logger::info(F("[LOSS] Loss captured; machine ready and next-start monitoring active"));
   return true;
 }
 
