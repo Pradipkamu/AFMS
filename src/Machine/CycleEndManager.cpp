@@ -19,7 +19,7 @@ void CycleEndManager::begin(uint8_t pin, bool activeHigh, uint16_t debounceMs) {
   gPin = pin;
   gActiveHigh = activeHigh;
   gDebounceMs = debounceMs;
-  pinMode(gPin, gActiveHigh ? INPUT_PULLDOWN_16 : INPUT_PULLUP);
+  pinMode(gPin, gActiveHigh ? INPUT : INPUT_PULLUP);
   gRawActive = readActive();
   gStableActive = gRawActive;
   gPulsePending = false;
