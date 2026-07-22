@@ -24,4 +24,8 @@ bool shiftScheduleValid();
 uint32_t lossAlarmDelaySeconds();
 uint16_t hourlyUploadDelaySeconds();
 bool alarmActiveHigh();
-}
+bool cycleEndEnabled();
+bool cycleEndActiveHigh();
+uint16_t cycleEndDebounceMs();
+uint32_t cycleEndTimeoutSeconds();
+}  // namespace Config
