@@ -29,7 +29,7 @@ void CycleManager::setCycleTimeMs(uint32_t cycleTimeMs) {
 }
 
 bool CycleManager::onProduction(uint32_t nowMs) {
-  if (gCycleEndEnabled && gCycleInProgress) {
+  if (gCycleInProgress) {
     ++gDuplicateStartCount;
     return false;
   }
