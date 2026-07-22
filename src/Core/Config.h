@@ -27,5 +27,6 @@ bool alarmActiveHigh();
 bool cycleEndEnabled();
 bool cycleEndActiveHigh();
 uint16_t cycleEndDebounceMs();
+uint16_t cycleEndMinimumMs();
 uint32_t cycleEndTimeoutSeconds();
 }  // namespace Config
