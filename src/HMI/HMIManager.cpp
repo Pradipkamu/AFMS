@@ -92,8 +92,8 @@ void applyAutomaticTarget(uint16_t cycleSeconds, uint16_t shiftId) {
 }
 
 uint32_t adjustedTarget(uint32_t originalTarget,
-                         uint16_t shiftId,
-                         uint32_t plannedShutdownSeconds) {
+                        uint16_t shiftId,
+                        uint32_t plannedShutdownSeconds) {
   const uint32_t shiftSeconds = shiftDurationSeconds(shiftId);
   if (originalTarget == 0 || shiftSeconds == 0) return originalTarget;
   const uint32_t productiveSeconds = plannedShutdownSeconds < shiftSeconds
@@ -122,6 +122,12 @@ uint16_t consumeLossCommand() {
   gRegisters[HMIRegister::CommandLossCodeAlias] = 0;
   return selectedCode;
 }
+
+uint16_t cyclePhaseStatus() {
+  if (CycleManager::cycleInProgress()) return 1;
+  if (CycleManager::cycleCompleted()) return 2;
+  return 0;
+}
 }
 
 void HMIManager::begin() {
@@ -136,6 +142,8 @@ void HMIManager::begin() {
   gRegisters[HMIRegister::CommandShift] = shift.shiftId;
   write32(HMIRegister::CommandPartNumberLow, shift.partNumber);
   writePartNameCommand(shift.partName);
+  gRegisters[HMIRegister::StatusCycleEndMode] = CycleManager::cycleEndEnabled() ? 1 : 0;
+  gRegisters[HMIRegister::StatusCyclePhase] = cyclePhaseStatus();
 
   gLastCycleSeconds = cycleSeconds;
   gLastTargetQuantity = gRegisters[HMIRegister::CommandTargetQuantity];
@@ -149,6 +157,7 @@ void HMIManager::begin() {
   Logger::info(F("Delta HMI Modbus RTU hardware UART ready"));
   Logger::info(F("[TARGET] Automatic target calculated from shift duration and cycle time"));
   Logger::info(F("[LOSS] HMI coils 00001-00016 mapped to Loss 1-16"));
+  Logger::info(F("[CYCLE] HMI diagnostics mapped to 40079-40080"));
 }
 
 void HMIManager::update() {
@@ -282,6 +291,8 @@ void HMIManager::update() {
   gRegisters[HMIRegister::StatusLastModbusAgeMs] = lastRequestMs == 0
       ? 0xFFFFU
       : clamp16(millis() - lastRequestMs);
+  gRegisters[HMIRegister::StatusCycleEndMode] = CycleManager::cycleEndEnabled() ? 1 : 0;
+  gRegisters[HMIRegister::StatusCyclePhase] = cyclePhaseStatus();
   write32(HMIRegister::StatusScheduledShiftElapsedLow, oee.scheduledShiftElapsedSeconds);
   write32(HMIRegister::StatusPlannedShutdownLow, oee.plannedShutdownSeconds);
   write32(HMIRegister::StatusPlannedProductionLow, oee.plannedSeconds);
