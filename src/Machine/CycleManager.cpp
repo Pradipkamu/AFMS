@@ -57,16 +57,26 @@ void CycleManager::armWaitingForStart(uint32_t nowMs) {
 
 void CycleManager::update(uint32_t nowMs) {
   if (!gCycleInProgress) return;
+
   const uint32_t elapsed = nowMs - gLastProductionMs;
   if (!gCycleEndEnabled && elapsed >= gCycleTimeMs) {
     gCompletionTimeMs = gLastProductionMs + gCycleTimeMs;
     gCycleInProgress = false;
     gCompletionReason = CompletionReason::FixedTime;
-  } else if (gCycleEndEnabled && elapsed >= gCycleEndTimeoutMs) {
-    gCompletionTimeMs = gLastProductionMs + gCycleEndTimeoutMs;
-    gCycleInProgress = false;
-    gCompletionReason = CompletionReason::CycleEndTimeout;
-    ++gTimeoutCount;
+    return;
+  }
+
+  if (gCycleEndEnabled) {
+    // In Cycle End mode, the configured cycle time remains the expected
+    // machine-processing period. The Cycle End timeout is an additional
+    // grace period after that expected cycle time, not a replacement for it.
+    const uint32_t cycleEndDeadlineMs = gCycleTimeMs + gCycleEndTimeoutMs;
+    if (elapsed >= cycleEndDeadlineMs) {
+      gCompletionTimeMs = gLastProductionMs + cycleEndDeadlineMs;
+      gCycleInProgress = false;
+      gCompletionReason = CompletionReason::CycleEndTimeout;
+      ++gTimeoutCount;
+    }
   }
 }
 
