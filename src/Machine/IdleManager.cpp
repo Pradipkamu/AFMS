@@ -24,16 +24,16 @@ void IdleManager::onProduction() {
   gIdleSeconds = 0;
 }
 
-void IdleManager::update(bool cycleExpired, uint32_t nowMs, uint32_t lastProductionMs, uint32_t cycleTimeMs) {
-  if (!cycleExpired) {
+void IdleManager::update(bool cycleCompleted, uint32_t nowMs, uint32_t completionTimeMs) {
+  if (!cycleCompleted || completionTimeMs == 0) {
     gIdle = false;
     gIdleSeconds = 0;
+    gAlarmDue = false;
     return;
   }
 
   gIdle = true;
-  const uint32_t idleStartMs = lastProductionMs + cycleTimeMs;
-  const uint32_t elapsedIdleMs = nowMs - idleStartMs;
+  const uint32_t elapsedIdleMs = nowMs - completionTimeMs;
   gIdleSeconds = elapsedIdleMs / 1000UL;
   gAlarmDue = elapsedIdleMs >= gIdleDelayMs;
 }
