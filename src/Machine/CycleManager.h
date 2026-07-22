@@ -10,7 +10,10 @@ enum class CompletionReason : uint8_t {
   WaitingForStart = 4
 };
 
-void begin(uint32_t cycleTimeMs, bool cycleEndEnabled, uint32_t cycleEndTimeoutMs);
+void begin(uint32_t cycleTimeMs,
+           bool cycleEndEnabled,
+           uint32_t cycleEndTimeoutMs,
+           uint32_t cycleEndMinimumMs);
 void setCycleTimeMs(uint32_t cycleTimeMs);
 bool onProduction(uint32_t nowMs);
 bool onCycleEnd(uint32_t nowMs);
@@ -25,4 +28,5 @@ bool cycleEndEnabled();
 CompletionReason completionReason();
 uint32_t timeoutCount();
 uint32_t duplicateStartCount();
+uint32_t earlyCycleEndCount();
 }
