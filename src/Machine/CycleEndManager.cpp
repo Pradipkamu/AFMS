@@ -3,46 +3,47 @@
 namespace {
 uint8_t gPin = 0;
 bool gActiveHigh = true;
-uint32_t gDebounceMs = 50;
-bool gRawActive = false;
-bool gStableActive = false;
-bool gPulsePending = false;
-uint32_t gRawChangedMs = 0;
+volatile uint32_t gLastPulseUs = 0;
+volatile bool gPulsePending = false;
+uint32_t gDebounceUs = 50000UL;
 
-bool readActive() {
-  const bool levelHigh = digitalRead(gPin) == HIGH;
-  return gActiveHigh ? levelHigh : !levelHigh;
+void IRAM_ATTR onCycleEndPulse() {
+  const uint32_t nowUs = micros();
+  if (nowUs - gLastPulseUs < gDebounceUs) return;
+  gLastPulseUs = nowUs;
+  gPulsePending = true;
 }
 }
 
 void CycleEndManager::begin(uint8_t pin, bool activeHigh, uint16_t debounceMs) {
   gPin = pin;
   gActiveHigh = activeHigh;
-  gDebounceMs = debounceMs;
-  pinMode(gPin, gActiveHigh ? INPUT : INPUT_PULLUP);
-  gRawActive = readActive();
-  gStableActive = gRawActive;
+  gDebounceUs = static_cast<uint32_t>(debounceMs) * 1000UL;
   gPulsePending = false;
-  gRawChangedMs = millis();
+  gLastPulseUs = 0;
+
+  // Active-low inputs use the ESP8266 internal pull-up. Active-high inputs
+  // require an external pull-down in the isolated machine input circuit.
+  pinMode(gPin, gActiveHigh ? INPUT : INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(gPin),
+                  onCycleEndPulse,
+                  gActiveHigh ? RISING : FALLING);
 }
 
 void CycleEndManager::update() {
-  const uint32_t nowMs = millis();
-  const bool current = readActive();
-  if (current != gRawActive) {
-    gRawActive = current;
-    gRawChangedMs = nowMs;
-  }
-  if (gStableActive != gRawActive && nowMs - gRawChangedMs >= gDebounceMs) {
-    gStableActive = gRawActive;
-    if (gStableActive) gPulsePending = true;
-  }
+  // Capture is interrupt-driven so short Cycle End pulses are retained even
+  // while network or filesystem work temporarily delays the main loop.
 }
 
 bool CycleEndManager::consumePulse() {
-  if (!gPulsePending) return false;
+  noInterrupts();
+  const bool available = gPulsePending;
   gPulsePending = false;
-  return true;
+  interrupts();
+  return available;
 }
 
-bool CycleEndManager::active() { return gStableActive; }
+bool CycleEndManager::active() {
+  const bool levelHigh = digitalRead(gPin) == HIGH;
+  return gActiveHigh ? levelHigh : !levelHigh;
+}
