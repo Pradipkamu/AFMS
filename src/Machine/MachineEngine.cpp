@@ -2,6 +2,7 @@
 #include "ProductionManager.h"
 #include "RejectManager.h"
 #include "CycleManager.h"
+#include "CycleEndManager.h"
 #include "IdleManager.h"
 #include "AlarmManager.h"
 #include "OEEManager.h"
@@ -24,10 +25,17 @@ uint32_t gLossStartIdleSeconds = 0;
 uint16_t gLastAcceptedLossCode = 0;
 uint32_t gLastLossDurationSeconds = 0;
 
-void restartLossMonitoring(uint32_t nowMs) {
+void restartFixedTimeMonitoring(uint32_t nowMs) {
   CycleManager::onProduction(nowMs);
   IdleManager::onProduction();
   gLossMonitoringActive = true;
+  gLossClassifiedForCurrentIdle = false;
+  gWasIdle = false;
+}
+
+void waitForFreshCycleStart() {
+  IdleManager::onProduction();
+  gLossMonitoringActive = false;
   gLossClassifiedForCurrentIdle = false;
   gWasIdle = false;
 }
@@ -41,7 +49,17 @@ void MachineEngine::begin() {
   RejectManager::begin(HardwareConfig::RejectInputPin,
                        PulseConfig::rejectDebounceMs() * 1000UL);
   RejectManager::setEnabled(true);
-  CycleManager::begin(HardwareConfig::DefaultCycleTimeMs);
+
+  const bool useCycleEnd = Config::cycleEndEnabled();
+  CycleManager::begin(HardwareConfig::DefaultCycleTimeMs,
+                      useCycleEnd,
+                      Config::cycleEndTimeoutSeconds() * 1000UL);
+  if (useCycleEnd) {
+    CycleEndManager::begin(HardwareConfig::CycleEndInputPin,
+                           Config::cycleEndActiveHigh(),
+                           Config::cycleEndDebounceMs());
+  }
+
   IdleManager::begin(Config::lossAlarmDelaySeconds() * 1000UL);
   AlarmManager::begin(HardwareConfig::AlarmOutputPin, Config::alarmActiveHigh());
   OEEManager::begin(HardwareConfig::DefaultCycleTimeMs);
@@ -49,16 +67,30 @@ void MachineEngine::begin() {
   gState = MachineState::Ready;
   gReady = true;
   gHasProductionPulse = false;
-  restartLossMonitoring(millis());
+  if (useCycleEnd) waitForFreshCycleStart();
+  else restartFixedTimeMonitoring(millis());
+
   EventBus::publish(EventType::MachineReady);
-  Logger::info(String(F("[LOSS] Capture alarm activates after cycle time + ")) +
-               Config::lossAlarmDelaySeconds() + F(" idle seconds"));
-  Logger::info(F("[LOSS] Monitoring started immediately at system boot"));
+  Logger::info(String(F("[CYCLE] Completion mode: ")) +
+               (useCycleEnd ? F("Cycle Start -> Cycle End") : F("Cycle Start -> fixed cycle time")));
+  Logger::info(String(F("[LOSS] Idle alarm delay: ")) +
+               Config::lossAlarmDelaySeconds() + F(" sec"));
   Logger::info(F("Machine engine ready"));
 }
 
 void MachineEngine::update() {
   const uint32_t nowMs = millis();
+
+  if (CycleManager::cycleEndEnabled()) {
+    CycleEndManager::update();
+    while (CycleEndManager::consumePulse()) {
+      if (CycleManager::onCycleEnd(nowMs)) {
+        Logger::info(F("[CYCLE END] Valid cycle completion received"));
+      } else {
+        Logger::warn(F("[CYCLE END] Ignored because no cycle is active"));
+      }
+    }
+  }
 
   while (ProductionManager::consumePulse()) {
     gHasProductionPulse = true;
@@ -67,19 +99,20 @@ void MachineEngine::update() {
     CycleManager::onProduction(nowMs);
     IdleManager::onProduction();
     if (!AlarmManager::active()) gState = MachineState::Running;
-    EventBus::publish(EventType::ProductionPulse, static_cast<int32_t>(ProductionManager::total()));
+    EventBus::publish(EventType::ProductionPulse,
+                      static_cast<int32_t>(ProductionManager::total()));
   }
 
   while (RejectManager::consumePulse()) {
-    EventBus::publish(EventType::RejectPulse, static_cast<int32_t>(RejectManager::total()));
+    EventBus::publish(EventType::RejectPulse,
+                      static_cast<int32_t>(RejectManager::total()));
   }
 
+  CycleManager::update(nowMs);
   if (gLossMonitoringActive) {
-    IdleManager::update(
-        CycleManager::cycleExpired(nowMs),
-        nowMs,
-        CycleManager::lastProductionMs(),
-        CycleManager::cycleTimeMs());
+    IdleManager::update(CycleManager::cycleCompleted(),
+                        nowMs,
+                        CycleManager::completionTimeMs());
   }
 
   const bool idleNow = gLossMonitoringActive && IdleManager::idle();
@@ -109,7 +142,9 @@ void MachineEngine::update() {
   gWasAlarmActive = alarmNow;
 
   const bool oeeDowntime = !gHasProductionPulse || idleNow || alarmNow;
-  OEEManager::update(oeeDowntime, ProductionManager::total(), RejectManager::total());
+  OEEManager::update(oeeDowntime,
+                     ProductionManager::total(),
+                     RejectManager::total());
 }
 
 bool MachineEngine::ready() { return gReady; }
@@ -138,12 +173,15 @@ MachineSnapshot MachineEngine::snapshot() {
 }
 
 bool MachineEngine::acknowledgeLossCode(uint16_t lossCode) {
-  if (lossCode == 0 || lossCode > 16 || !AlarmManager::active() || gLossClassifiedForCurrentIdle) {
+  if (lossCode == 0 || lossCode > 16 || !AlarmManager::active() ||
+      gLossClassifiedForCurrentIdle) {
     return false;
   }
 
   const uint32_t idleNow = IdleManager::idleSeconds();
-  const uint32_t duration = idleNow >= gLossStartIdleSeconds ? idleNow - gLossStartIdleSeconds : 0;
+  const uint32_t duration = idleNow >= gLossStartIdleSeconds
+                                ? idleNow - gLossStartIdleSeconds
+                                : 0;
   OEEManager::recordLoss(lossCode, duration);
   EventBus::publish(EventType::LossSelected, lossCode, duration);
 
@@ -152,11 +190,12 @@ bool MachineEngine::acknowledgeLossCode(uint16_t lossCode) {
   ProductionManager::setEnabled(true);
   RejectManager::setEnabled(true);
   gHasProductionPulse = false;
-  restartLossMonitoring(millis());
+  if (CycleManager::cycleEndEnabled()) waitForFreshCycleStart();
+  else restartFixedTimeMonitoring(millis());
   gState = MachineState::Ready;
   gLastAcceptedLossCode = lossCode;
   gLastLossDurationSeconds = duration;
-  Logger::info(F("[LOSS] Loss captured; monitoring restarted immediately"));
+  Logger::info(F("[LOSS] Loss captured; waiting for next cycle"));
   return true;
 }
 
