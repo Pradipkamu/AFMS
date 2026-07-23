@@ -169,6 +169,14 @@ void HMIManager::update() {
     const bool accepted = MachineEngine::acknowledgeLossCode(lossCode);
     gRegisters[HMIRegister::StatusLossCommandResult] = accepted ? 1 : 2;
     criticalChange |= accepted;
+    if (accepted) {
+      const MachineSnapshot released = MachineEngine::snapshot();
+      gRegisters[HMIRegister::StatusMachineState] = static_cast<uint16_t>(released.state);
+      gRegisters[HMIRegister::StatusAlarm] = 0;
+      gRegisters[HMIRegister::StatusCyclePhase] = cyclePhaseStatus();
+      write32(HMIRegister::StatusIdleSecondsLow, released.idleSeconds);
+      gLastAlarmActive = false;
+    }
     Logger::info(String(F("[LOSS] HMI command ")) + lossCode +
                  (accepted ? F(" accepted") : F(" rejected")));
   }
@@ -223,7 +231,7 @@ void HMIManager::update() {
   }
   if (criticalChange) RuntimeStateManager::saveNow();
 
-  if (millis() - gLastSyncMs < 250UL) return;
+  if (millis() - gLastSyncMs < 100UL) return;
   gLastSyncMs = millis();
   const MachineSnapshot machine = MachineEngine::snapshot();
   const ShiftSnapshot shiftData = ShiftManager::snapshot();
