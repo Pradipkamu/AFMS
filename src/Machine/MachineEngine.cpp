@@ -40,7 +40,9 @@ void resetIdleTracking() {
 }
 
 void restartFixedTimeMonitoring(uint32_t nowMs) {
-  CycleManager::onProduction(nowMs);
+  // Fixed-time mode must wait for a real Cycle Start. Starting a synthetic
+  // cycle here would reject the first operator/machine pulse as a duplicate.
+  CycleManager::armWaitingForStart(nowMs);
   resetIdleTracking();
   gLossMonitoringActive = true;
 }
