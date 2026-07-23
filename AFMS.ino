@@ -48,12 +48,16 @@ void setup() {
 
 void loop() {
   ReliabilityManager::update();
-  WiFiManager::update();
-  ReconnectManager::update();
+
+  // Local machine control and HMI acknowledgement have priority over
+  // network maintenance so loss release and production capture stay fast.
   MachineEngine::update();
+  HMIManager::update();
   ShiftManager::update();
   RuntimeStateManager::update();
-  HMIManager::update();
+
+  WiFiManager::update();
+  ReconnectManager::update();
   if (!ReliabilityManager::safeMode()) {
     CloudManager::update();
   }
