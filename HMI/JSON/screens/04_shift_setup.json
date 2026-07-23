@@ -1,0 +1,54 @@
+{
+  "screen": {
+    "number": 4,
+    "name": "Shift Setup",
+    "title": "AFMS SHIFT & PART SETUP",
+    "resolution": {"width": 800, "height": 480},
+    "background": "#101820",
+    "refresh_ms": 500,
+    "objects": [
+      {"id":"title","type":"text","x":18,"y":8,"width":430,"height":34,"text":"SHIFT & PART SETUP","font_size":24,"foreground":"#FFFFFF"},
+      {"id":"comm_lamp","type":"word_state_lamp","x":654,"y":8,"width":36,"height":30,"tag":"StatusCommunication","register":26,"states":{"0":"#D62828","1":"#2A9D8F"}},
+      {"id":"comm_text","type":"text","x":696,"y":10,"width":86,"height":28,"text":"RS-485","font_size":17,"foreground":"#FFFFFF"},
+
+      {"id":"setup_panel","type":"panel","x":18,"y":58,"width":490,"height":314,"fill":"#1F2A33","border":"#3A506B"},
+      {"id":"shift_label","type":"text","x":38,"y":78,"width":170,"height":34,"text":"SHIFT NUMBER","font_size":19,"foreground":"#BFC9D4"},
+      {"id":"shift_input","type":"numeric_input","x":236,"y":74,"width":230,"height":42,"tag":"CommandShift","register":4,"minimum":1,"maximum":9,"format":"unsigned_16","font_size":24},
+
+      {"id":"operator_label","type":"text","x":38,"y":126,"width":170,"height":34,"text":"OPERATOR ID","font_size":19,"foreground":"#BFC9D4"},
+      {"id":"operator_input","type":"numeric_input","x":236,"y":122,"width":230,"height":42,"tag":"CommandOperatorId","register":3,"minimum":0,"maximum":65535,"format":"unsigned_16","font_size":24},
+
+      {"id":"target_label","type":"text","x":38,"y":174,"width":170,"height":34,"text":"TARGET QTY","font_size":19,"foreground":"#BFC9D4"},
+      {"id":"target_input","type":"numeric_input","x":236,"y":170,"width":230,"height":42,"tag":"CommandTargetQuantity","register":2,"minimum":0,"maximum":65535,"format":"unsigned_16","font_size":24},
+
+      {"id":"cycle_label","type":"text","x":38,"y":222,"width":170,"height":34,"text":"CYCLE TIME (S)","font_size":19,"foreground":"#BFC9D4"},
+      {"id":"cycle_input","type":"numeric_input","x":236,"y":218,"width":230,"height":42,"tag":"CommandCycleTimeSeconds","register":1,"minimum":1,"maximum":3600,"format":"unsigned_16","font_size":24},
+
+      {"id":"part_number_label","type":"text","x":38,"y":270,"width":170,"height":34,"text":"PART NUMBER","font_size":19,"foreground":"#BFC9D4"},
+      {"id":"part_number_input","type":"numeric_input_32","x":236,"y":266,"width":230,"height":42,"tag_low":"CommandPartNumberLow","tag_high":"CommandPartNumberHigh","register_low":6,"register_high":7,"minimum":0,"maximum":4294967295,"format":"unsigned_32","font_size":22},
+
+      {"id":"part_name_label","type":"text","x":38,"y":318,"width":170,"height":34,"text":"PART NAME","font_size":19,"foreground":"#BFC9D4"},
+      {"id":"part_name_input","type":"ascii_input","x":236,"y":314,"width":230,"height":42,"tag":"CommandPartNameStart","register_start":8,"register_count":8,"characters":16,"encoding":"ascii","font_size":20},
+
+      {"id":"current_panel","type":"panel","x":528,"y":58,"width":254,"height":314,"fill":"#1F2A33","border":"#3A506B"},
+      {"id":"current_title","type":"text","x":548,"y":74,"width":214,"height":30,"text":"CURRENT STATUS","font_size":20,"align":"center","foreground":"#FFFFFF"},
+      {"id":"current_shift_label","type":"text","x":548,"y":120,"width":110,"height":28,"text":"SHIFT","font_size":17,"foreground":"#BFC9D4"},
+      {"id":"current_shift","type":"numeric_display","x":660,"y":116,"width":102,"height":34,"tag":"StatusShift","register":38,"font_size":22,"align":"right"},
+      {"id":"current_operator_label","type":"text","x":548,"y":164,"width":110,"height":28,"text":"OPERATOR","font_size":17,"foreground":"#BFC9D4"},
+      {"id":"current_operator","type":"numeric_display_32","x":650,"y":160,"width":112,"height":34,"tag_low":"StatusOperatorIdLow","tag_high":"StatusOperatorIdHigh","register_low":39,"register_high":40,"font_size":21,"align":"right","format":"unsigned"},
+      {"id":"current_target_label","type":"text","x":548,"y":208,"width":110,"height":28,"text":"TARGET","font_size":17,"foreground":"#BFC9D4"},
+      {"id":"current_target","type":"numeric_display_32","x":650,"y":204,"width":112,"height":34,"tag_low":"StatusTargetQuantityLow","tag_high":"StatusTargetQuantityHigh","register_low":36,"register_high":37,"font_size":21,"align":"right","format":"unsigned"},
+      {"id":"current_part_label","type":"text","x":548,"y":252,"width":110,"height":28,"text":"PART NO.","font_size":17,"foreground":"#BFC9D4"},
+      {"id":"current_part","type":"numeric_display_32","x":650,"y":248,"width":112,"height":34,"tag_low":"StatusPartNumberLow","tag_high":"StatusPartNumberHigh","register_low":41,"register_high":42,"font_size":19,"align":"right","format":"unsigned"},
+      {"id":"current_cycle_label","type":"text","x":548,"y":296,"width":110,"height":28,"text":"CYCLE (S)","font_size":17,"foreground":"#BFC9D4"},
+      {"id":"current_cycle","type":"numeric_display","x":650,"y":292,"width":112,"height":34,"tag":"StatusCycleTimeSeconds","register":74,"font_size":21,"align":"right"},
+
+      {"id":"nav_dashboard","type":"screen_change_button","x":18,"y":392,"width":118,"height":64,"text":"DASHBOARD","target_screen":1},
+      {"id":"nav_production","type":"screen_change_button","x":146,"y":392,"width":118,"height":64,"text":"PRODUCTION","target_screen":2},
+      {"id":"nav_oee","type":"screen_change_button","x":274,"y":392,"width":92,"height":64,"text":"OEE","target_screen":3},
+      {"id":"nav_loss","type":"screen_change_button","x":376,"y":392,"width":102,"height":64,"text":"LOSS","target_screen":5},
+      {"id":"nav_connect","type":"screen_change_button","x":488,"y":392,"width":132,"height":64,"text":"CONNECT","target_screen":6},
+      {"id":"nav_diagnostics","type":"screen_change_button","x":630,"y":392,"width":152,"height":64,"text":"DIAGNOSTICS","target_screen":7}
+    ]
+  }
+}

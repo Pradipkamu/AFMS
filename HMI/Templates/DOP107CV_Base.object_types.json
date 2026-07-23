@@ -1,0 +1,48 @@
+{
+  "template": "DOP107CV_Base.dop.dpa",
+  "classification_status": "provisional-preview-correlation",
+  "records": [
+    {
+      "index": 0,
+      "geometry": {"x": 58, "y": 78, "width": 87, "height": 84},
+      "provisional_type": "word_or_bit_lamp",
+      "confidence": "medium",
+      "evidence": "Top-left square preview object with no visible caption; geometry edit X58->X68 was proven writable."
+    },
+    {
+      "index": 1,
+      "geometry": {"x": 281, "y": 75, "width": 93, "height": 74},
+      "provisional_type": "numeric_display_or_numeric_input",
+      "confidence": "medium",
+      "evidence": "Small top-centre object visibly contains a numeric/glyph area in the embedded preview."
+    },
+    {
+      "index": 2,
+      "geometry": {"x": 482, "y": 74, "width": 102, "height": 76},
+      "provisional_type": "text_or_static_graphic",
+      "confidence": "low",
+      "evidence": "Top-right rectangular preview object has no clearly readable dynamic value or button shading."
+    },
+    {
+      "index": 3,
+      "geometry": {"x": 58, "y": 269, "width": 167, "height": 53},
+      "provisional_type": "command_button",
+      "confidence": "medium",
+      "evidence": "Mid-left object has button-style border and a short centred caption in the preview."
+    },
+    {
+      "index": 4,
+      "geometry": {"x": 606, "y": 388, "width": 174, "height": 82},
+      "provisional_type": "screen_change_button",
+      "confidence": "medium",
+      "evidence": "Large bottom-right button-form object is positioned like a navigation control."
+    }
+  ],
+  "safety_rule": "Do not serialize object type, PLC address, caption, or action fields from this inventory until each provisional classification is verified with a one-property DOPSoft sample.",
+  "next_samples": [
+    "Change only record 1 displayed value/address and save",
+    "Change only record 2 caption text and save",
+    "Change only record 3 PLC address and save",
+    "Change only record 4 target screen and save"
+  ]
+}

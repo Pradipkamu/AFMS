@@ -1,0 +1,40 @@
+{
+  "screen": {
+    "number": 6,
+    "name": "Connectivity",
+    "title": "AFMS CONNECTIVITY",
+    "resolution": {"width": 800, "height": 480},
+    "background": "#101820",
+    "refresh_ms": 500,
+    "objects": [
+      {"id":"title","type":"text","x":18,"y":8,"width":360,"height":36,"text":"CONNECTIVITY STATUS","font_size":24,"foreground":"#FFFFFF"},
+      {"id":"wifi_lamp","type":"word_state_lamp","x":30,"y":72,"width":44,"height":44,"tag":"StatusWifiConnected","register":51,"states":{"0":"#D62828","1":"#2A9D8F"}},
+      {"id":"wifi_text","type":"text","x":86,"y":74,"width":190,"height":36,"text":"Wi-Fi","font_size":22,"foreground":"#FFFFFF"},
+      {"id":"rssi_label","type":"text","x":300,"y":74,"width":120,"height":32,"text":"RSSI","font_size":20,"foreground":"#BFC9D4"},
+      {"id":"rssi_value","type":"numeric_display","x":420,"y":70,"width":120,"height":40,"tag":"StatusWifiRssi","register":66,"signed":true,"suffix":" dBm","font_size":24,"align":"right"},
+      {"id":"google_lamp","type":"word_state_lamp","x":30,"y":138,"width":44,"height":44,"tag":"StatusGoogleConnected","register":52,"states":{"0":"#D62828","1":"#2A9D8F"}},
+      {"id":"google_text","type":"text","x":86,"y":140,"width":190,"height":36,"text":"Google Sheets","font_size":22,"foreground":"#FFFFFF"},
+      {"id":"google_success","type":"numeric_display_32","x":300,"y":136,"width":120,"height":42,"tag_low":"StatusGoogleSuccessLow","tag_high":"StatusGoogleSuccessHigh","register_low":55,"register_high":56,"font_size":24,"align":"right"},
+      {"id":"google_success_label","type":"text","x":430,"y":142,"width":90,"height":28,"text":"SUCCESS","font_size":16,"foreground":"#BFC9D4"},
+      {"id":"google_failure","type":"numeric_display_32","x":552,"y":136,"width":120,"height":42,"tag_low":"StatusGoogleFailureLow","tag_high":"StatusGoogleFailureHigh","register_low":57,"register_high":58,"font_size":24,"align":"right"},
+      {"id":"google_failure_label","type":"text","x":682,"y":142,"width":90,"height":28,"text":"FAIL","font_size":16,"foreground":"#BFC9D4"},
+      {"id":"telegram_lamp","type":"word_state_lamp","x":30,"y":204,"width":44,"height":44,"tag":"StatusTelegramConnected","register":53,"states":{"0":"#D62828","1":"#2A9D8F"}},
+      {"id":"telegram_text","type":"text","x":86,"y":206,"width":190,"height":36,"text":"Telegram","font_size":22,"foreground":"#FFFFFF"},
+      {"id":"telegram_success","type":"numeric_display_32","x":300,"y":202,"width":120,"height":42,"tag_low":"StatusTelegramSuccessLow","tag_high":"StatusTelegramSuccessHigh","register_low":59,"register_high":60,"font_size":24,"align":"right"},
+      {"id":"telegram_success_label","type":"text","x":430,"y":208,"width":90,"height":28,"text":"SUCCESS","font_size":16,"foreground":"#BFC9D4"},
+      {"id":"telegram_failure","type":"numeric_display_32","x":552,"y":202,"width":120,"height":42,"tag_low":"StatusTelegramFailureLow","tag_high":"StatusTelegramFailureHigh","register_low":61,"register_high":62,"font_size":24,"align":"right"},
+      {"id":"telegram_failure_label","type":"text","x":682,"y":208,"width":90,"height":28,"text":"FAIL","font_size":16,"foreground":"#BFC9D4"},
+      {"id":"queue_panel","type":"panel","x":30,"y":276,"width":742,"height":86,"fill":"#1F2A33","border":"#3A506B"},
+      {"id":"queue_label","type":"text","x":52,"y":294,"width":240,"height":32,"text":"OFFLINE QUEUE COUNT","font_size":20,"foreground":"#BFC9D4"},
+      {"id":"queue_value","type":"numeric_display","x":306,"y":286,"width":140,"height":48,"tag":"StatusOfflineQueueCount","register":54,"font_size":30,"align":"right"},
+      {"id":"comm_label","type":"text","x":502,"y":294,"width":150,"height":32,"text":"RS-485 LINK","font_size":20,"foreground":"#BFC9D4"},
+      {"id":"comm_lamp","type":"word_state_lamp","x":672,"y":288,"width":54,"height":44,"tag":"StatusCommunication","register":26,"states":{"0":"#D62828","1":"#2A9D8F"}},
+      {"id":"nav_dashboard","type":"screen_change_button","x":18,"y":386,"width":112,"height":70,"text":"DASHBOARD","target_screen":1},
+      {"id":"nav_production","type":"screen_change_button","x":140,"y":386,"width":118,"height":70,"text":"PRODUCTION","target_screen":2},
+      {"id":"nav_oee","type":"screen_change_button","x":268,"y":386,"width":94,"height":70,"text":"OEE","target_screen":3},
+      {"id":"nav_shift","type":"screen_change_button","x":372,"y":386,"width":106,"height":70,"text":"SHIFT","target_screen":4},
+      {"id":"nav_loss","type":"screen_change_button","x":488,"y":386,"width":106,"height":70,"text":"LOSS","target_screen":5},
+      {"id":"nav_diagnostics","type":"screen_change_button","x":604,"y":386,"width":178,"height":70,"text":"DIAGNOSTICS","target_screen":7}
+    ]
+  }
+}

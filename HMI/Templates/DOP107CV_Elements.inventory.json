@@ -1,0 +1,27 @@
+{
+  "source": "DOP107CV_Elements.dpa",
+  "archive_size": 70308,
+  "gzip_offset": 48290,
+  "payload_size": 117330,
+  "payload_sha256": "56ff0e5d113c02c02db9dc8f4b9316f84a83e2cff1c3e5c390bd5ed1231a563b",
+  "object_count": 16,
+  "classification_status": "geometry-confirmed-types-pending",
+  "objects": [
+    {"index":0,"payload_offset":16920,"payload_offset_hex":"0x4218","geometry":{"x":35,"y":17,"width":62,"height":55},"context_sha256":"509b396be1a3ef5bb6ee7829d84b843e0c75d6e1db4f8a5b68470a331b21107e"},
+    {"index":1,"payload_offset":18532,"payload_offset_hex":"0x4864","geometry":{"x":134,"y":19,"width":67,"height":57},"context_sha256":"3a0b9031175628f2242b94ff5ebcef82d31b042a56eb1195b3d5f51ce567d0d0"},
+    {"index":2,"payload_offset":20148,"payload_offset_hex":"0x4EB4","geometry":{"x":229,"y":21,"width":74,"height":59},"context_sha256":"647f330fd374024b76047791c171d17594d497796812cb77cb148bb164554457"},
+    {"index":3,"payload_offset":21818,"payload_offset_hex":"0x553A","geometry":{"x":340,"y":23,"width":68,"height":60},"context_sha256":"98c5443177b0ba91261227e6a1e9953878fecbe620296464a09069f41e830021"},
+    {"index":4,"payload_offset":23478,"payload_offset_hex":"0x5BB6","geometry":{"x":449,"y":23,"width":68,"height":63},"context_sha256":"d3f6331d085cb83ecb8c05efb2a914fd0dc1b07a5b1e37c698810dc423285076"},
+    {"index":5,"payload_offset":24730,"payload_offset_hex":"0x609A","geometry":{"x":595,"y":28,"width":115,"height":70},"context_sha256":"12ea41646bac5384152f01f05fe66b8c4b4476100725b6bc5ee09d5fbd4012a3"},
+    {"index":6,"payload_offset":26786,"payload_offset_hex":"0x68A2","geometry":{"x":14,"y":120,"width":128,"height":76},"context_sha256":"702f77e1eb0e7475007526bad7c3489043e70f367936108edc82662f1a7d128c"},
+    {"index":7,"payload_offset":27966,"payload_offset_hex":"0x6D3E","geometry":{"x":211,"y":126,"width":132,"height":75},"context_sha256":"af4f721e1fa72316173c2e60b02a1965371ef15b87c5a25b93f8a6a9fd8dd0c3"},
+    {"index":8,"payload_offset":29399,"payload_offset_hex":"0x72D7","geometry":{"x":381,"y":135,"width":74,"height":68},"context_sha256":"1e7817e961bd965bfcbdba27c5109c21bebd817dece83401d79f0b98e6ef2811"},
+    {"index":9,"payload_offset":30783,"payload_offset_hex":"0x783F","geometry":{"x":509,"y":133,"width":76,"height":63},"context_sha256":"e79e73343f949372ba657168ccf6e334c7183624538693efc71b07cf00bc2d93"},
+    {"index":10,"payload_offset":32288,"payload_offset_hex":"0x7E20","geometry":{"x":618,"y":136,"width":95,"height":52},"context_sha256":"b600693090c436cf44840ecbaac0e94f969a68359586b52baf9a9ae825906123"},
+    {"index":11,"payload_offset":33497,"payload_offset_hex":"0x82D9","geometry":{"x":20,"y":241,"width":106,"height":43},"context_sha256":"8c01a38e4073f80492a4ad1d4fd4c275780a499527fdb6e0b338f15acec997ac"},
+    {"index":12,"payload_offset":34501,"payload_offset_hex":"0x86C5","geometry":{"x":172,"y":236,"width":103,"height":53},"context_sha256":"6a8ac8920a60d3d4fe9517daf6cf9496cd8cd6a20ea06b182946f95d189de79e"},
+    {"index":13,"payload_offset":35506,"payload_offset_hex":"0x8AB2","geometry":{"x":316,"y":233,"width":98,"height":49},"context_sha256":"e2c4bb6cb2bfdc6f138d2d1e8bd4e2d76ecb1537ee35b9467a2db2bebbc137f0"},
+    {"index":14,"payload_offset":36518,"payload_offset_hex":"0x8EA6","geometry":{"x":464,"y":227,"width":90,"height":49},"context_sha256":"b91c04e25904b260cf12d87166f2b662ea85488e142c468c1978752bcd51835e"},
+    {"index":15,"payload_offset":39204,"payload_offset_hex":"0x9924","geometry":{"x":601,"y":223,"width":127,"height":50},"context_sha256":"f0ebc36af21cfab0a46d085cfd251187d13af78c054e23f671f085ba3e979c49"}
+  ]
+}

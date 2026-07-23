@@ -1,0 +1,56 @@
+{
+  "screen": {
+    "number": 1,
+    "name": "Dashboard",
+    "title": "AFMS MACHINE DASHBOARD",
+    "resolution": {"width": 800, "height": 480},
+    "background": "#101820",
+    "refresh_ms": 250,
+    "objects": [
+      {"id":"machine_state_label","type":"text","x":18,"y":10,"width":210,"height":32,"text":"MACHINE STATE","font_size":20,"align":"left","foreground":"#FFFFFF"},
+      {"id":"machine_state_value","type":"numeric_state_display","x":228,"y":8,"width":150,"height":36,"tag":"StatusMachineState","register":16,"states":{"0":"STOPPED","1":"RUNNING","2":"IDLE","3":"ALARM"},"font_size":22,"align":"center"},
+      {"id":"communication_lamp","type":"word_state_lamp","x":650,"y":8,"width":40,"height":34,"tag":"StatusCommunication","register":26,"states":{"0":"#D62828","1":"#2A9D8F"}},
+      {"id":"communication_text","type":"text","x":694,"y":10,"width":88,"height":30,"text":"RS-485","font_size":18,"align":"left","foreground":"#FFFFFF"},
+
+      {"id":"production_panel","type":"panel","x":18,"y":58,"width":244,"height":126,"fill":"#1F2A33","border":"#3A506B"},
+      {"id":"production_label","type":"text","x":30,"y":68,"width":218,"height":28,"text":"TOTAL PRODUCTION","font_size":19,"align":"center","foreground":"#BFC9D4"},
+      {"id":"production_value","type":"numeric_display_32","x":38,"y":100,"width":204,"height":62,"tag_low":"StatusProductionLow","tag_high":"StatusProductionHigh","register_low":17,"register_high":18,"font_size":40,"align":"center","foreground":"#FFFFFF","format":"unsigned"},
+
+      {"id":"good_panel","type":"panel","x":278,"y":58,"width":244,"height":126,"fill":"#12372A","border":"#2A9D8F"},
+      {"id":"good_label","type":"text","x":290,"y":68,"width":218,"height":28,"text":"GOOD PARTS","font_size":19,"align":"center","foreground":"#BFE3D6"},
+      {"id":"good_value","type":"numeric_display_32","x":298,"y":100,"width":204,"height":62,"tag_low":"StatusGoodLow","tag_high":"StatusGoodHigh","register_low":21,"register_high":22,"font_size":40,"align":"center","foreground":"#5EE1A2","format":"unsigned"},
+
+      {"id":"reject_panel","type":"panel","x":538,"y":58,"width":244,"height":126,"fill":"#3A1717","border":"#D62828"},
+      {"id":"reject_label","type":"text","x":550,"y":68,"width":218,"height":28,"text":"REJECT PARTS","font_size":19,"align":"center","foreground":"#F4C2C2"},
+      {"id":"reject_value","type":"numeric_display_32","x":558,"y":100,"width":204,"height":62,"tag_low":"StatusRejectLow","tag_high":"StatusRejectHigh","register_low":19,"register_high":20,"font_size":40,"align":"center","foreground":"#FF6B6B","format":"unsigned"},
+
+      {"id":"oee_panel","type":"panel","x":18,"y":202,"width":504,"height":156,"fill":"#1F2A33","border":"#3A506B"},
+      {"id":"availability_label","type":"text","x":34,"y":216,"width":138,"height":28,"text":"AVAILABILITY","font_size":17,"align":"center","foreground":"#BFC9D4"},
+      {"id":"availability_value","type":"numeric_display_scaled","x":42,"y":250,"width":122,"height":46,"tag":"StatusAvailabilityPermille","register":32,"scale":0.1,"suffix":" %","decimals":1,"font_size":28,"align":"center"},
+      {"id":"performance_label","type":"text","x":190,"y":216,"width":138,"height":28,"text":"PERFORMANCE","font_size":17,"align":"center","foreground":"#BFC9D4"},
+      {"id":"performance_value","type":"numeric_display_scaled","x":198,"y":250,"width":122,"height":46,"tag":"StatusPerformancePermille","register":33,"scale":0.1,"suffix":" %","decimals":1,"font_size":28,"align":"center"},
+      {"id":"quality_label","type":"text","x":346,"y":216,"width":138,"height":28,"text":"QUALITY","font_size":17,"align":"center","foreground":"#BFC9D4"},
+      {"id":"quality_value","type":"numeric_display_scaled","x":354,"y":250,"width":122,"height":46,"tag":"StatusQualityPermille","register":34,"scale":0.1,"suffix":" %","decimals":1,"font_size":28,"align":"center"},
+      {"id":"oee_label","type":"text","x":34,"y":308,"width":100,"height":34,"text":"OEE","font_size":24,"align":"left","foreground":"#FFFFFF"},
+      {"id":"oee_bar","type":"bar_graph","x":138,"y":309,"width":214,"height":30,"tag":"StatusOeePermille","register":35,"minimum":0,"maximum":1000,"thresholds":[{"max":599,"color":"#D62828"},{"max":849,"color":"#F4A261"},{"max":1000,"color":"#2A9D8F"}]},
+      {"id":"oee_value","type":"numeric_display_scaled","x":364,"y":303,"width":140,"height":42,"tag":"StatusOeePermille","register":35,"scale":0.1,"suffix":" %","decimals":1,"font_size":30,"align":"right"},
+
+      {"id":"shift_panel","type":"panel","x":538,"y":202,"width":244,"height":156,"fill":"#1F2A33","border":"#3A506B"},
+      {"id":"shift_label","type":"text","x":550,"y":214,"width":95,"height":28,"text":"SHIFT","font_size":18,"foreground":"#BFC9D4"},
+      {"id":"shift_value","type":"numeric_display","x":662,"y":212,"width":104,"height":34,"tag":"StatusShift","register":38,"font_size":24,"align":"center"},
+      {"id":"target_label","type":"text","x":550,"y":252,"width":95,"height":28,"text":"TARGET","font_size":18,"foreground":"#BFC9D4"},
+      {"id":"target_value","type":"numeric_display_32","x":652,"y":248,"width":114,"height":36,"tag_low":"StatusTargetQuantityLow","tag_high":"StatusTargetQuantityHigh","register_low":36,"register_high":37,"font_size":24,"align":"right","format":"unsigned"},
+      {"id":"remaining_label","type":"text","x":550,"y":292,"width":95,"height":28,"text":"REMAIN","font_size":18,"foreground":"#BFC9D4"},
+      {"id":"remaining_value","type":"numeric_display_32","x":652,"y":288,"width":114,"height":36,"tag_low":"StatusTargetRemainingLow","tag_high":"StatusTargetRemainingHigh","register_low":49,"register_high":50,"font_size":24,"align":"right","format":"unsigned"},
+      {"id":"alarm_lamp","type":"word_state_lamp","x":552,"y":326,"width":36,"height":24,"tag":"StatusAlarm","register":25,"states":{"0":"#34495E","1":"#D62828"}},
+      {"id":"alarm_text","type":"text","x":596,"y":324,"width":168,"height":28,"text":"ACTIVE ALARM","font_size":18,"foreground":"#FFFFFF"},
+
+      {"id":"nav_production","type":"screen_change_button","x":18,"y":386,"width":118,"height":70,"text":"PRODUCTION","target_screen":2},
+      {"id":"nav_oee","type":"screen_change_button","x":146,"y":386,"width":94,"height":70,"text":"OEE","target_screen":3},
+      {"id":"nav_shift","type":"screen_change_button","x":250,"y":386,"width":106,"height":70,"text":"SHIFT","target_screen":4},
+      {"id":"nav_loss","type":"screen_change_button","x":366,"y":386,"width":106,"height":70,"text":"LOSS","target_screen":5},
+      {"id":"nav_connectivity","type":"screen_change_button","x":482,"y":386,"width":138,"height":70,"text":"CONNECT","target_screen":6},
+      {"id":"nav_diagnostics","type":"screen_change_button","x":630,"y":386,"width":152,"height":70,"text":"DIAGNOSTICS","target_screen":7}
+    ]
+  }
+}
