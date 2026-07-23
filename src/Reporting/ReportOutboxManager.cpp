@@ -13,11 +13,10 @@ uint16_t gCount = 0;
 bool readRecord(const String &path, ReportRecord &record) {
   File file = LittleFS.open(path, "r");
   if (!file) return false;
-  DynamicJsonDocument document(4096);
+  DynamicJsonDocument document(4608);
   const DeserializationError error = deserializeJson(document, file);
   file.close();
   if (error || (document["version"] | 0U) != 1U) return false;
-
   record.storagePath = path;
   record.reportId = document["report_id"] | "";
   record.type = document["type"] | "";
@@ -36,7 +35,7 @@ bool readRecord(const String &path, ReportRecord &record) {
 }
 
 bool writeRecord(const ReportRecord &record) {
-  DynamicJsonDocument document(4096);
+  DynamicJsonDocument document(4608);
   document["version"] = 1;
   document["report_id"] = record.reportId;
   document["type"] = record.type;
@@ -51,17 +50,13 @@ bool writeRecord(const ReportRecord &record) {
   document["loss_code"] = record.lossCode;
   document["loss_duration_seconds"] = record.lossDurationSeconds;
   document["csv_path"] = record.csvPath;
-
   const String tempPath = record.storagePath + F(".tmp");
   File file = LittleFS.open(tempPath, "w");
   if (!file) return false;
   const size_t written = serializeJson(document, file);
   file.flush();
   file.close();
-  if (!written) {
-    LittleFS.remove(tempPath);
-    return false;
-  }
+  if (!written) { LittleFS.remove(tempPath); return false; }
   LittleFS.remove(record.storagePath);
   if (!LittleFS.rename(tempPath, record.storagePath)) {
     LittleFS.remove(tempPath);
@@ -89,9 +84,7 @@ bool saveSequence() {
 uint16_t recount() {
   uint16_t count = 0;
   Dir dir = LittleFS.openDir(kDir);
-  while (dir.next()) {
-    if (dir.fileName().endsWith(F(".json")) && count < 65535U) ++count;
-  }
+  while (dir.next()) if (dir.fileName().endsWith(F(".json")) && count < 65535U) ++count;
   return count;
 }
 
@@ -105,13 +98,24 @@ String nextPath() {
 
 String makeReportId(const char *type, uint32_t epoch) {
   String value = Config::machineId();
-  value += '-';
-  value += type ? type : "report";
-  value += '-';
-  value += epoch;
-  value += '-';
-  value += gSequence;
+  value += '-'; value += type ? type : "report";
+  value += '-'; value += epoch;
+  value += '-'; value += gSequence;
   return value;
+}
+
+String addReportId(const String &payload, const String &reportId) {
+  if (!payload.length()) return payload;
+  DynamicJsonDocument document(3072);
+  if (deserializeJson(document, payload)) {
+    Logger::warn(F("[OUTBOX] Google payload is not valid JSON; report ID not inserted"));
+    return payload;
+  }
+  document["report_id"] = reportId;
+  String output;
+  output.reserve(payload.length() + reportId.length() + 32U);
+  serializeJson(document, output);
+  return output;
 }
 }
 
@@ -143,7 +147,7 @@ bool ReportOutboxManager::enqueue(const char *type,
   record.googleSent = !googleRequired;
   record.telegramRequired = telegramRequired;
   record.telegramSent = !telegramRequired;
-  record.googlePayload = googlePayload;
+  record.googlePayload = googleRequired ? addReportId(googlePayload, record.reportId) : String();
   record.telegramKind = telegramKind;
   record.lossCode = lossCode;
   record.lossDurationSeconds = lossDurationSeconds;
