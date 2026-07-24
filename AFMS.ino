@@ -9,6 +9,7 @@
 #include "src/Core/HardwareConfig.h"
 #include "src/Storage/LittleFSManager.h"
 #include "src/Storage/RuntimeStateManager.h"
+#include "src/Storage/OfflineQueue.h"
 #include "src/Communication/WiFiManager.h"
 #include "src/Communication/CloudManager.h"
 #include "src/Communication/CommunicationManager.h"
@@ -26,6 +27,7 @@ void setup() {
   Logger::begin(Serial1);
   Logger::info(F("Booting AFMS " AFMS_VERSION));
   if (!LittleFSManager::begin()) Logger::error(F("LittleFS mount failed"));
+  OfflineQueue::begin();
   ReliabilityManager::begin();
   Config::load();
   LossCatalog::begin();
