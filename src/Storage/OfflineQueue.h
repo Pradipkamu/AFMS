@@ -11,4 +11,10 @@ bool removeHead(Destination destination);
 uint16_t count(Destination destination);
 uint32_t droppedCount(Destination destination);
 void clear(Destination destination);
+
+// Backward-compatible Google Sheets queue API used by CloudManager.
+// New code should prefer the destination-aware functions above.
+bool push(const String &payload);
+bool peek(String &payload);
+bool pop();
 }
