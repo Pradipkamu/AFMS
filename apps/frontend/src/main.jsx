@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
+import './downtime.css';
 
 const NAV_ITEMS = ['Overview', 'Machines', 'Production', 'Downtime', 'OEE', 'Reports'];
 const FILTERS = ['All', 'Running', 'Attention', 'Offline'];
