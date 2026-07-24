@@ -12,11 +12,23 @@
 #include <LittleFS.h>
 
 namespace {
-uint32_t gSuccess=0,gFailure=0,gSequence=0;
-bool gConnected=false;
+uint32_t gSuccess=0,gFailure=0,gSequence=0,gLastParts=0;
+uint16_t gLastLoss=0;
+MachineState gLastState=MachineState::Ready;
+bool gConnected=false,gObserved=false;
 
 const char *statusName(MachineState state){
   switch(state){case MachineState::Running:return "RUNNING";case MachineState::Idle:return "IDLE";case MachineState::LossRequired:return "BREAKDOWN";default:return "STOPPED";}
+}
+
+void detectTriggers(){
+  const MachineSnapshot m=MachineEngine::snapshot(); const uint16_t loss=MachineEngine::lastAcceptedLossCode();
+  if(!gObserved){gObserved=true;gLastState=m.state;gLastParts=m.totalParts;gLastLoss=loss;return;}
+  if(m.state!=gLastState){CommunicationManager::notify(CommunicationManager::Trigger::StatusChange);gLastState=m.state;}
+  if(loss!=gLastLoss){CommunicationManager::notify(CommunicationManager::Trigger::LossChange);gLastLoss=loss;}
+  const uint32_t milestone=CommunicationManager::productionMilestone();
+  if(milestone&&m.totalParts/milestone!=gLastParts/milestone) CommunicationManager::notify(CommunicationManager::Trigger::ProductionMilestone);
+  gLastParts=m.totalParts;
 }
 
 bool loadCredentials(String &baseUrl,String &apiKey){
@@ -39,17 +51,16 @@ String buildPayload(String &eventId){
 
 bool sendPayload(const String &payload){
   String baseUrl,key; if(!loadCredentials(baseUrl,key))return false;
-  WiFiClient client; HTTPClient http;
-  const String url=baseUrl+"/api/v1/devices/telemetry";
+  WiFiClient client; HTTPClient http; const String url=baseUrl+"/api/v1/devices/telemetry";
   if(!http.begin(client,url))return false;
   http.addHeader("Content-Type","application/json"); http.addHeader("X-AFMS-Device-Key",key);
-  const int code=http.POST(payload); http.end();
-  return code==200||code==201;
+  const int code=http.POST(payload); http.end(); return code==200||code==201;
 }
 }
 
 void AfmsWebClient::begin(){Logger::info(F("[AFMS] Authenticated telemetry sender ready"));}
 void AfmsWebClient::update(){
+  detectTriggers();
   if(!CommunicationManager::webDue())return;
   if(!WiFiManager::connected()){gConnected=false;return;}
   String eventId; const String payload=buildPayload(eventId);
