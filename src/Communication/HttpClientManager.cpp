@@ -1,14 +1,16 @@
 #include "HttpClientManager.h"
+#include "NetworkBudget.h"
 #include "WiFiManager.h"
 #include <ESP8266HTTPClient.h>
 #include <WiFiClientSecureBearSSL.h>
 
 namespace {
-uint16_t gTimeoutMs = 10000;
+uint16_t gTimeoutMs = 3000;
 uint32_t gFailures = 0;
 
 HttpResult request(const char *url, const String *payload) {
   if (!url || !url[0] || !WiFiManager::connected()) return {-1, String()};
+  if (!NetworkBudget::acquire()) return {-3, String(F("Deferred by network budget"))};
 
   BearSSL::WiFiClientSecure client;
   client.setInsecure();
@@ -21,12 +23,6 @@ HttpResult request(const char *url, const String *payload) {
   }
 
   http.setTimeout(gTimeoutMs);
-
-  // Google Apps Script commonly processes the POST and then returns a redirect
-  // to script.googleusercontent.com for the response body. Automatically
-  // following that redirect with the original POST can create a duplicate row.
-  // Therefore POST redirects are not followed. A trusted Google response
-  // redirect is treated as successful delivery after the original POST.
   http.setFollowRedirects(HTTPC_DISABLE_FOLLOW_REDIRECTS);
   const char *headerKeys[] = {"Location"};
   http.collectHeaders(headerKeys, 1);
@@ -41,7 +37,6 @@ HttpResult request(const char *url, const String *payload) {
   }
 
   String body = code > 0 ? http.getString() : String();
-
   if (payload && (code == 301 || code == 302 || code == 303 || code == 307 || code == 308)) {
     const String location = http.header("Location");
     if (location.indexOf(F("script.googleusercontent.com")) >= 0 ||
@@ -50,7 +45,6 @@ HttpResult request(const char *url, const String *payload) {
       body = F("Google Apps Script redirect accepted; POST already processed");
     }
   }
-
   http.end();
 
   if (code < 200 || code >= 300) ++gFailures;
@@ -58,7 +52,11 @@ HttpResult request(const char *url, const String *payload) {
 }
 }
 
-void HttpClientManager::begin(uint16_t timeoutMs) { gTimeoutMs = timeoutMs; }
+void HttpClientManager::begin(uint16_t timeoutMs) {
+  // Cap foreground blocking even when an older caller requests ten seconds.
+  gTimeoutMs = timeoutMs > 3000 ? 3000 : timeoutMs;
+  if (gTimeoutMs < 1000) gTimeoutMs = 1000;
+}
 HttpResult HttpClientManager::postJson(const char *url, const String &payload) { return request(url, &payload); }
 HttpResult HttpClientManager::get(const char *url) { return request(url, nullptr); }
 uint32_t HttpClientManager::failureCount() { return gFailures; }
