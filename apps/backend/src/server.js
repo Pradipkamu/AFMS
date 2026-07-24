@@ -20,25 +20,20 @@ function sendEvent(res, event, payload) {
 }
 
 function broadcast(event, payload) {
-  for (const client of eventClients) {
-    sendEvent(client, event, payload);
-  }
+  for (const client of eventClients) sendEvent(client, event, payload);
 }
 
-app.use(helmet({
-  crossOriginResourcePolicy: false,
-}));
+function clamp(value, minimum = 0, maximum = 100) {
+  return Math.min(maximum, Math.max(minimum, Number(value) || 0));
+}
+
+app.use(helmet({ crossOriginResourcePolicy: false }));
 app.use(cors());
 app.use(express.json({ limit: '64kb' }));
 
 app.get('/api/health', asyncHandler(async (_req, res) => {
   await pool.query('SELECT 1');
-  res.json({
-    status: 'ok',
-    service: 'afms-backend',
-    database: 'connected',
-    liveClients: eventClients.size,
-  });
+  res.json({ status: 'ok', service: 'afms-backend', database: 'connected', liveClients: eventClients.size });
 }));
 
 app.get('/api/v1/events', (req, res) => {
@@ -49,14 +44,10 @@ app.get('/api/v1/events', (req, res) => {
     'X-Accel-Buffering': 'no',
   });
   res.flushHeaders();
-
   eventClients.add(res);
   sendEvent(res, 'connected', { connectedAt: new Date().toISOString() });
 
-  const heartbeat = setInterval(() => {
-    sendEvent(res, 'heartbeat', { timestamp: new Date().toISOString() });
-  }, 20000);
-
+  const heartbeat = setInterval(() => sendEvent(res, 'heartbeat', { timestamp: new Date().toISOString() }), 20000);
   req.on('close', () => {
     clearInterval(heartbeat);
     eventClients.delete(res);
@@ -75,22 +66,15 @@ app.post('/api/v1/telemetry', asyncHandler(async (req, res) => {
     recordedAt,
   } = req.body;
 
-  if (!machineId || !status) {
-    return res.status(400).json({ error: 'machineId and status are required' });
-  }
+  if (!machineId || !status) return res.status(400).json({ error: 'machineId and status are required' });
 
   const result = await pool.query(
     `INSERT INTO machine_telemetry
       (machine_id, status, production_count, reject_count, cycle_time_ms, loss_code, recorded_at)
      VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7::timestamptz, NOW()))
-     RETURNING id,
-       machine_id AS "machineId",
-       status,
-       production_count AS "productionCount",
-       reject_count AS "rejectCount",
-       cycle_time_ms AS "cycleTimeMs",
-       loss_code AS "lossCode",
-       recorded_at AS "recordedAt"`,
+     RETURNING id, machine_id AS "machineId", status,
+       production_count AS "productionCount", reject_count AS "rejectCount",
+       cycle_time_ms AS "cycleTimeMs", loss_code AS "lossCode", recorded_at AS "recordedAt"`,
     [machineId, status, productionCount, rejectCount, cycleTimeMs, lossCode, recordedAt || null],
   );
 
@@ -111,15 +95,87 @@ app.get('/api/v1/machines/latest', asyncHandler(async (_req, res) => {
   res.json(result.rows);
 }));
 
+app.get('/api/v1/oee', asyncHandler(async (req, res) => {
+  const windowHours = Math.min(168, Math.max(1, Number(req.query.windowHours) || 8));
+  const defaultIdealCycleMs = Math.min(3_600_000, Math.max(1, Number(req.query.idealCycleMs) || 12000));
+
+  const result = await pool.query(`
+    WITH windowed AS (
+      SELECT *,
+        LEAD(recorded_at, 1, NOW()) OVER (PARTITION BY machine_id ORDER BY recorded_at, id) AS next_at
+      FROM machine_telemetry
+      WHERE recorded_at >= NOW() - ($1::text || ' hours')::interval
+    ), machine_rollup AS (
+      SELECT machine_id,
+        EXTRACT(EPOCH FROM (MAX(recorded_at) - MIN(recorded_at))) AS observed_seconds,
+        SUM(CASE WHEN UPPER(status) = 'RUNNING'
+          THEN GREATEST(0, EXTRACT(EPOCH FROM (LEAST(next_at, NOW()) - recorded_at))) ELSE 0 END) AS running_seconds,
+        GREATEST(0, MAX(production_count) - MIN(production_count)) AS total_parts,
+        GREATEST(0, MAX(reject_count) - MIN(reject_count)) AS reject_parts,
+        NULLIF(AVG(NULLIF(cycle_time_ms, 0)), 0) AS average_cycle_ms
+      FROM windowed
+      GROUP BY machine_id
+    )
+    SELECT machine_id AS "machineId", observed_seconds AS "observedSeconds",
+      running_seconds AS "runningSeconds", total_parts AS "totalParts",
+      reject_parts AS "rejectParts", average_cycle_ms AS "averageCycleMs"
+    FROM machine_rollup
+    ORDER BY machine_id
+  `, [windowHours]);
+
+  const machines = result.rows.map((row) => {
+    const observedSeconds = Number(row.observedSeconds || 0);
+    const runningSeconds = Number(row.runningSeconds || 0);
+    const totalParts = Number(row.totalParts || 0);
+    const rejectParts = Number(row.rejectParts || 0);
+    const goodParts = Math.max(0, totalParts - rejectParts);
+    const idealCycleMs = Number(row.averageCycleMs || defaultIdealCycleMs);
+    const availability = observedSeconds > 0 ? clamp((runningSeconds / observedSeconds) * 100) : 0;
+    const performance = runningSeconds > 0 ? clamp(((idealCycleMs / 1000) * totalParts / runningSeconds) * 100) : 0;
+    const quality = totalParts > 0 ? clamp((goodParts / totalParts) * 100) : 100;
+    const oee = clamp((availability * performance * quality) / 10000);
+    return { machineId: row.machineId, availability, performance, quality, oee, totalParts, goodParts, rejectParts, runningSeconds, observedSeconds, idealCycleMs };
+  });
+
+  const weighted = machines.reduce((acc, machine) => {
+    const weight = Math.max(machine.observedSeconds, 1);
+    acc.weight += weight;
+    acc.availability += machine.availability * weight;
+    acc.performance += machine.performance * weight;
+    acc.quality += machine.quality * weight;
+    acc.oee += machine.oee * weight;
+    acc.totalParts += machine.totalParts;
+    acc.goodParts += machine.goodParts;
+    acc.rejectParts += machine.rejectParts;
+    return acc;
+  }, { weight: 0, availability: 0, performance: 0, quality: 0, oee: 0, totalParts: 0, goodParts: 0, rejectParts: 0 });
+
+  const divisor = weighted.weight || 1;
+  res.json({
+    generatedAt: new Date().toISOString(),
+    windowHours,
+    assumptions: { defaultIdealCycleMs, note: 'OEE is derived from telemetry intervals and cumulative production counters.' },
+    summary: {
+      availability: weighted.availability / divisor,
+      performance: weighted.performance / divisor,
+      quality: weighted.quality / divisor,
+      oee: weighted.oee / divisor,
+      totalParts: weighted.totalParts,
+      goodParts: weighted.goodParts,
+      rejectParts: weighted.rejectParts,
+      machines: machines.length,
+    },
+    machines,
+  });
+}));
+
 app.use((error, _req, res, _next) => {
   console.error(error);
   if (res.headersSent) return;
   res.status(500).json({ error: 'Internal server error' });
 });
 
-const server = app.listen(port, '0.0.0.0', () => {
-  console.log(`AFMS backend listening on port ${port}`);
-});
+const server = app.listen(port, '0.0.0.0', () => console.log(`AFMS backend listening on port ${port}`));
 
 async function shutdown(signal) {
   console.log(`${signal} received, shutting down AFMS backend`);
