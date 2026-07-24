@@ -1,0 +1,18 @@
+{
+  "name": "afms",
+  "version": "3.1.0-dev",
+  "private": true,
+  "workspaces": [
+    "apps/backend",
+    "apps/frontend"
+  ],
+  "scripts": {
+    "dev:backend": "npm --workspace @afms/backend run dev",
+    "dev:frontend": "npm --workspace @afms/frontend run dev",
+    "build": "npm --workspace @afms/frontend run build",
+    "start": "npm --workspace @afms/backend run start"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
