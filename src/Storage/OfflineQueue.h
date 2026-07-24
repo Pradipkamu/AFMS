@@ -9,6 +9,7 @@ bool enqueue(Destination destination, const String &eventId, const String &paylo
 bool peek(Destination destination, String &eventId, String &payload);
 bool removeHead(Destination destination);
 uint16_t count(Destination destination);
+uint16_t count();
 uint32_t droppedCount(Destination destination);
 void clear(Destination destination);
 
