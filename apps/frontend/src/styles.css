@@ -1,0 +1,17 @@
+:root { font-family: Inter, system-ui, sans-serif; color: #e2e8f0; background: #0f172a; }
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; min-height: 100vh; }
+main { max-width: 1400px; margin: auto; padding: 32px; }
+header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 28px; }
+h1, h2, p { margin-top: 0; }
+header p, small { color: #94a3b8; }
+button { border: 0; border-radius: 8px; padding: 11px 18px; background: #2563eb; color: white; cursor: pointer; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 18px; }
+article { border: 1px solid #334155; border-radius: 14px; padding: 20px; background: #1e293b; }
+.title { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+.title span { padding: 6px 10px; border-radius: 999px; background: #164e63; }
+dl { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+dl div { padding: 12px; border-radius: 10px; background: #0f172a; }
+dt { color: #94a3b8; font-size: 12px; }
+dd { margin: 6px 0 0; font-size: 20px; font-weight: 700; }
+.error { padding: 12px; border-radius: 8px; background: #7f1d1d; }
