@@ -18,9 +18,15 @@
 #include "src/Communication/ReconnectManager.h"
 #include "src/Communication/OtaManager.h"
 #include "src/Communication/WebManager.h"
+#include "src/Communication/NetworkBudget.h"
 #include "src/Machine/MachineEngine.h"
 #include "src/Machine/ShiftManager.h"
 #include "src/HMI/HMIManager.h"
+
+namespace {
+uint32_t gMaxLoopUs = 0;
+uint32_t gLastLoopReportMs = 0;
+}
 
 void setup() {
   Serial1.begin(HardwareConfig::DiagnosticBaud);
@@ -50,16 +56,22 @@ void setup() {
 }
 
 void loop() {
+  const uint32_t loopStartedUs = micros();
+  NetworkBudget::beginLoop();
+
+  // Real-time machine work always runs before storage, UI and networking.
   ReliabilityManager::update();
   MachineEngine::update();
   HMIManager::update();
   ShiftManager::update();
   RuntimeStateManager::update();
+
   WiFiManager::update();
   ReconnectManager::update();
   RemoteConfigManager::update();
   CommunicationManager::update();
   if (!ReliabilityManager::safeMode()) {
+    // Fresh AFMS status/loss telemetry gets first access to the network budget.
     AfmsWebClient::update();
     CloudManager::update();
   }
@@ -67,5 +79,13 @@ void loop() {
   OtaManager::update();
   SerialDiagnostics::update();
   EventBus::update();
+
+  const uint32_t elapsedUs = micros() - loopStartedUs;
+  if (elapsedUs > gMaxLoopUs) gMaxLoopUs = elapsedUs;
+  if (millis() - gLastLoopReportMs >= 60000UL) {
+    gLastLoopReportMs = millis();
+    Logger::info(String(F("[PERF] Max loop: ")) + gMaxLoopUs + F(" us; deferred network: ") + NetworkBudget::deferredCount());
+    gMaxLoopUs = 0;
+  }
   yield();
 }

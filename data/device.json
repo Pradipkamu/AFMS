@@ -1,0 +1,20 @@
+{
+  "machine_id": "MCH001",
+  "machine_name": "PRESS-01",
+  "wifi_ssid": "YOUR_WIFI_NAME",
+  "wifi_password": "YOUR_WIFI_PASSWORD",
+  "google_web_app_url": "https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec",
+  "api_token": "YOUR_GOOGLE_API_TOKEN",
+  "telegram_bot_token": "YOUR_TELEGRAM_BOT_TOKEN",
+  "telegram_chat_id": "-1004443456521",
+  "afms_server_url": "http://130.210.57.61",
+  "device_api_key": "YOUR_MACHINE_DEVICE_API_KEY",
+  "afms_tls_fingerprint": "",
+  "production_pulse_debounce_ms": 50,
+  "reject_pulse_debounce_ms": 50,
+  "runtime_state": {
+    "enabled": true,
+    "save_interval_seconds": 60,
+    "restore_on_boot": true
+  }
+}

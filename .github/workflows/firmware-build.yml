@@ -30,5 +30,43 @@ jobs:
           arduino-cli lib install "ArduinoJson@6.21.5"
           arduino-cli lib install "ModbusMaster"
           arduino-cli lib install "AsyncTelegram2"
-      - name: Compile AFMS
-        run: arduino-cli compile --fqbn esp8266:esp8266:generic --warnings all --export-binaries .
+      - name: Compile AFMS and export binaries
+        shell: bash
+        run: |
+          set -o pipefail
+          rm -rf build
+          mkdir -p build
+          arduino-cli compile \
+            --fqbn esp8266:esp8266:generic \
+            --warnings all \
+            --export-binaries \
+            --output-dir build \
+            . 2>&1 | tee compile.log
+          cp compile.log build/compile.log
+      - name: Record firmware size
+        shell: bash
+        run: |
+          set -euo pipefail
+          BIN_FILE="$(find build -type f -name '*.bin' -print -quit)"
+          ELF_FILE="$(find build -type f -name '*.elf' -print -quit)"
+          test -n "$BIN_FILE" && test -s "$BIN_FILE"
+          test -n "$ELF_FILE" && test -s "$ELF_FILE"
+          cp "$BIN_FILE" build/AFMS-firmware.bin
+          cp "$ELF_FILE" build/AFMS-firmware.elf
+          {
+            echo "Binary: $(basename "$BIN_FILE") $(stat -c%s "$BIN_FILE") bytes"
+            echo "ELF: $(basename "$ELF_FILE") $(stat -c%s "$ELF_FILE") bytes"
+            echo
+            find build -maxdepth 1 -type f -printf '%f %s bytes\n' | sort
+          } | tee build/artifact-sizes.txt
+      - name: Upload firmware artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: afms-esp8266-firmware
+          path: |
+            build/AFMS-firmware.bin
+            build/AFMS-firmware.elf
+            build/compile.log
+            build/artifact-sizes.txt
+          if-no-files-found: error
+          retention-days: 30

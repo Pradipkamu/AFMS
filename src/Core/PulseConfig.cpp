@@ -1,37 +1,26 @@
 #include "PulseConfig.h"
 #include "Logger.h"
 #include <LittleFS.h>
+#include <ArduinoJson.h>
 
 namespace {
 uint32_t gProductionMs = 5;
 uint32_t gRejectMs = 5;
-
-uint32_t readJsonUint(const String &json, const char *key, uint32_t fallback) {
-  const String token = String('"') + key + "\"";
-  const int keyPos = json.indexOf(token);
-  if (keyPos < 0) return fallback;
-  const int colon = json.indexOf(':', keyPos + token.length());
-  if (colon < 0) return fallback;
-  int start = colon + 1;
-  while (start < static_cast<int>(json.length()) && isspace(static_cast<unsigned char>(json[start]))) ++start;
-  int end = start;
-  while (end < static_cast<int>(json.length()) && isDigit(json[end])) ++end;
-  if (end == start) return fallback;
-  const uint32_t value = static_cast<uint32_t>(json.substring(start, end).toInt());
-  return value >= 1 && value <= 60000 ? value : fallback;
-}
+uint32_t bounded(JsonVariantConst value,uint32_t fallback){const uint32_t parsed=value|fallback;return parsed>=1&&parsed<=60000?parsed:fallback;}
 }
 
 void PulseConfig::load() {
-  File file = LittleFS.open("/machine.json", "r");
+  File file = LittleFS.open("/device.json", "r");
   if (!file) {
-    Logger::warn(F("[PULSE] machine.json missing; using 5 ms debounce"));
+    Logger::warn(F("[PULSE] device.json missing; using 5 ms debounce"));
     return;
   }
-  const String json = file.readString();
+  DynamicJsonDocument doc(4096);
+  const auto error=deserializeJson(doc,file);
   file.close();
-  gProductionMs = readJsonUint(json, "production_pulse_debounce_ms", 5);
-  gRejectMs = readJsonUint(json, "reject_pulse_debounce_ms", 5);
+  if(error){Logger::warn(F("[PULSE] invalid device.json; using active debounce"));return;}
+  gProductionMs=bounded(doc["production_pulse_debounce_ms"],5);
+  gRejectMs=bounded(doc["reject_pulse_debounce_ms"],5);
   Logger::info(String(F("[PULSE] Production debounce: ")) + gProductionMs + F(" ms"));
   Logger::info(String(F("[PULSE] Reject debounce: ")) + gRejectMs + F(" ms"));
 }

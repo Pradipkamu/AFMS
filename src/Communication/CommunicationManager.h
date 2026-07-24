@@ -8,6 +8,7 @@ void reloadConfiguration();
 void notify(Trigger trigger);
 bool webEnabled();
 bool googleEnabled();
+bool googleBreakdownImmediate();
 bool webDue();
 bool googleDue();
 uint32_t webIntervalSeconds();

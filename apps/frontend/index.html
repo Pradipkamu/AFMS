@@ -9,5 +9,26 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
+    <script>
+      (() => {
+        const addApiLink = () => {
+          const nav = document.querySelector('.sidebar nav');
+          if (!nav || nav.querySelector('[data-afms-api-management]')) return false;
+          const link = document.createElement('a');
+          link.className = 'nav-item';
+          link.href = '/api-management.html';
+          link.dataset.afmsApiManagement = 'true';
+          link.innerHTML = '<span class="nav-dot"></span>API Management';
+          nav.appendChild(link);
+          return true;
+        };
+        if (!addApiLink()) {
+          const observer = new MutationObserver(() => {
+            if (addApiLink()) observer.disconnect();
+          });
+          observer.observe(document.documentElement, { childList: true, subtree: true });
+        }
+      })();
+    </script>
   </body>
 </html>

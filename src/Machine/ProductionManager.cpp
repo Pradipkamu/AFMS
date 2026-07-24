@@ -1,7 +1,9 @@
 #include "ProductionManager.h"
 
 namespace {
-constexpr uint8_t kQueueSize = 8;
+// 63 usable entries. At a one-second cycle this tolerates more than a minute
+// of foreground blocking without losing an accepted production pulse.
+constexpr uint8_t kQueueSize = 64;
 volatile uint32_t gTotal = 0;
 volatile uint32_t gPulseTimesUs[kQueueSize] = {0};
 volatile uint8_t gHead = 0;
