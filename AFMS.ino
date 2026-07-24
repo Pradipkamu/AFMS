@@ -12,6 +12,7 @@
 #include "src/Communication/WiFiManager.h"
 #include "src/Communication/CloudManager.h"
 #include "src/Communication/CommunicationManager.h"
+#include "src/Communication/RemoteConfigManager.h"
 #include "src/Communication/ReconnectManager.h"
 #include "src/Communication/OtaManager.h"
 #include "src/Communication/WebManager.h"
@@ -34,6 +35,7 @@ void setup() {
   MachineEngine::begin();
   CloudManager::begin();
   CommunicationManager::begin();
+  RemoteConfigManager::begin();
   ReconnectManager::begin();
   ShiftManager::begin();
   RuntimeStateManager::begin();
@@ -51,6 +53,7 @@ void loop() {
   RuntimeStateManager::update();
   WiFiManager::update();
   ReconnectManager::update();
+  RemoteConfigManager::update();
   CommunicationManager::update();
   if (!ReliabilityManager::safeMode()) CloudManager::update();
   WebManager::update();
