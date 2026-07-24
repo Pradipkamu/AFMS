@@ -1,0 +1,38 @@
+{
+  "configVersion": 1,
+  "updatedAt": "2026-07-24T00:00:00Z",
+  "loss_alarm_delay_seconds": 120,
+  "hourly_upload_delay_seconds": 0,
+  "alarm_active_high": true,
+  "shift_1_name": "A",
+  "shift_1_start": "08:00",
+  "shift_1_end": "16:00",
+  "shift_2_name": "B",
+  "shift_2_start": "16:00",
+  "shift_2_end": "00:00",
+  "shift_3_name": "C",
+  "shift_3_start": "00:00",
+  "shift_3_end": "08:00",
+  "communication": {
+    "configSync": {
+      "enabled": true,
+      "checkIntervalSeconds": 300
+    },
+    "afmsWeb": {
+      "enabled": true,
+      "requireHttps": false,
+      "mode": "HYBRID",
+      "intervalSeconds": 30,
+      "heartbeatSeconds": 60,
+      "productionMilestone": 10,
+      "sendOnStatusChange": true,
+      "sendOnLossChange": true,
+      "sendOnShiftChange": true
+    },
+    "googleSheets": {
+      "enabled": true,
+      "uploadIntervalSeconds": 3600,
+      "sendBreakdownImmediately": true
+    }
+  }
+}
