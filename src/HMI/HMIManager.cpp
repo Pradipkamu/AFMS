@@ -267,56 +267,55 @@ void HMIManager::update() {
           shiftData.targetQuantity > shiftData.production ? shiftData.targetQuantity - shiftData.production : 0);
 
   gRegisters[HMIRegister::StatusWifiConnected] = WiFiManager::connected() ? 1 : 0;
-  gRegisters[HMIRegister::StatusGoogleConnected] = CloudManager::connected() ? 1 : 0;
+  // Keep the Google indicator ON after at least one successful upload while Wi-Fi remains connected.
+  // CloudManager::connected() still provides the immediate live result; the success counter prevents
+  // a transient later request failure from hiding a proven working Google connection.
+  gRegisters[HMIRegister::StatusGoogleConnected] =
+      (WiFiManager::connected() &&
+       (CloudManager::connected() || CloudManager::uploadSuccessCount() > 0)) ? 1 : 0;
   gRegisters[HMIRegister::StatusTelegramConnected] = TelegramClient::connected() ? 1 : 0;
   gRegisters[HMIRegister::StatusOfflineQueueCount] = OfflineQueue::count();
   write32(HMIRegister::StatusGoogleSuccessLow, CloudManager::uploadSuccessCount());
   write32(HMIRegister::StatusGoogleFailureLow, CloudManager::uploadFailureCount());
   write32(HMIRegister::StatusTelegramSuccessLow, TelegramClient::successCount());
   write32(HMIRegister::StatusTelegramFailureLow, TelegramClient::failureCount());
-  gRegisters[HMIRegister::StatusModbusErrorCount] = static_cast<uint16_t>(ModbusSlave::errorCount() & 0xFFFFU);
   write32(HMIRegister::StatusModbusRequestLow, ModbusSlave::requestCount());
-  gRegisters[HMIRegister::StatusWifiRssi] = WiFiManager::connected()
-      ? static_cast<uint16_t>(static_cast<int16_t>(WiFi.RSSI()))
-      : 0;
+  gRegisters[HMIRegister::StatusModbusErrorCount] = clamp16(ModbusSlave::errorCount());
+  const long rssi = WiFi.RSSI();
+  gRegisters[HMIRegister::StatusWifiRssi] = static_cast<uint16_t>(static_cast<int16_t>(rssi));
   gRegisters[HMIRegister::StatusTimeSynchronized] = TimeManager::synchronized() ? 1 : 0;
 
   const time_t now = TimeManager::now();
-  struct tm localTime;
-  if (now > 0 && localtime_r(&now, &localTime)) {
-    gRegisters[HMIRegister::StatusYear] = static_cast<uint16_t>(localTime.tm_year + 1900);
-    gRegisters[HMIRegister::StatusMonth] = static_cast<uint16_t>(localTime.tm_mon + 1);
-    gRegisters[HMIRegister::StatusDay] = static_cast<uint16_t>(localTime.tm_mday);
-    gRegisters[HMIRegister::StatusHour] = static_cast<uint16_t>(localTime.tm_hour);
-    gRegisters[HMIRegister::StatusMinute] = static_cast<uint16_t>(localTime.tm_min);
-    gRegisters[HMIRegister::StatusSecond] = static_cast<uint16_t>(localTime.tm_sec);
+  if (now > 0) {
+    struct tm value;
+    localtime_r(&now, &value);
+    gRegisters[HMIRegister::StatusYear] = static_cast<uint16_t>(value.tm_year + 1900);
+    gRegisters[HMIRegister::StatusMonth] = static_cast<uint16_t>(value.tm_mon + 1);
+    gRegisters[HMIRegister::StatusDay] = static_cast<uint16_t>(value.tm_mday);
+    gRegisters[HMIRegister::StatusHour] = static_cast<uint16_t>(value.tm_hour);
+    gRegisters[HMIRegister::StatusMinute] = static_cast<uint16_t>(value.tm_min);
+    gRegisters[HMIRegister::StatusSecond] = static_cast<uint16_t>(value.tm_sec);
   }
 
-  gRegisters[HMIRegister::StatusCycleTimeSeconds] = static_cast<uint16_t>(CycleManager::cycleTimeMs() / 1000UL);
+  gRegisters[HMIRegister::StatusCycleTimeSeconds] =
+      static_cast<uint16_t>(CycleManager::cycleTimeMs() / 1000UL);
   gRegisters[HMIRegister::StatusHmiHeartbeatEcho] = gLastHmiHeartbeat;
-  gRegisters[HMIRegister::StatusHmiHeartbeatAgeSeconds] = clamp16((millis() - gLastHmiHeartbeatMs) / 1000UL);
-  const uint32_t lastRequestMs = ModbusSlave::lastRequestMs();
-  gRegisters[HMIRegister::StatusLastModbusAgeMs] = lastRequestMs == 0
-      ? 0xFFFFU
-      : clamp16(millis() - lastRequestMs);
+  gRegisters[HMIRegister::StatusHmiHeartbeatAgeSeconds] =
+      clamp16((millis() - gLastHmiHeartbeatMs) / 1000UL);
+  write32(HMIRegister::StatusLastModbusAgeMs, ModbusSlave::lastRequestAgeMs());
   gRegisters[HMIRegister::StatusCycleEndMode] = CycleManager::cycleEndEnabled() ? 1 : 0;
   gRegisters[HMIRegister::StatusCyclePhase] = cyclePhaseStatus();
-  write32(HMIRegister::StatusScheduledShiftElapsedLow, oee.scheduledShiftElapsedSeconds);
-  write32(HMIRegister::StatusPlannedShutdownLow, oee.plannedShutdownSeconds);
-  write32(HMIRegister::StatusPlannedProductionLow, oee.plannedSeconds);
+  write32(HMIRegister::StatusScheduledShiftElapsedLow, shiftData.scheduledElapsedSeconds);
+  write32(HMIRegister::StatusPlannedShutdownLow, shiftData.plannedShutdownSeconds);
+  write32(HMIRegister::StatusPlannedProductionLow, shiftData.plannedProductionSeconds);
   gRegisters[HMIRegister::StatusLastLossCode] = MachineEngine::lastAcceptedLossCode();
   write32(HMIRegister::StatusLastLossDurationLow, MachineEngine::lastLossDurationSeconds());
-
-  const uint32_t reducedTarget = adjustedTarget(shiftData.targetQuantity,
-                                                 shiftData.shiftId,
-                                                 oee.plannedShutdownSeconds);
-  const uint32_t reducedRemaining = reducedTarget > shiftData.production
-      ? reducedTarget - shiftData.production
-      : 0;
-  write32(HMIRegister::StatusAdjustedTargetLow, reducedTarget);
-  write32(HMIRegister::StatusAdjustedTargetRemainingLow, reducedRemaining);
+  const uint32_t adjusted = adjustedTarget(shiftData.targetQuantity,
+                                           shiftData.shiftId,
+                                           shiftData.plannedShutdownSeconds);
+  write32(HMIRegister::StatusAdjustedTargetLow, adjusted);
+  write32(HMIRegister::StatusAdjustedTargetRemainingLow,
+          adjusted > shiftData.production ? adjusted - shiftData.production : 0);
 }
 
 bool HMIManager::connected() { return ModbusSlave::connected(); }
-uint32_t HMIManager::requestCount() { return ModbusSlave::requestCount(); }
-uint32_t HMIManager::errorCount() { return ModbusSlave::errorCount(); }
