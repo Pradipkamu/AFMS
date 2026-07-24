@@ -21,6 +21,8 @@ services:
     environment:
       PORT: 3000
       DATABASE_URL: postgresql://${POSTGRES_USER:-afms}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-afms}
+      AFMS_ADMIN_USERNAME: ${AFMS_ADMIN_USERNAME:-admin}
+      AFMS_ADMIN_PASSWORD: ${AFMS_ADMIN_PASSWORD:-}
     depends_on:
       postgres:
         condition: service_healthy
