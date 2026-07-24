@@ -117,6 +117,10 @@ bool OfflineQueue::peek(Destination destination, String &eventId, String &payloa
 
 bool OfflineQueue::removeHead(Destination destination) { return removeFirst(destination); }
 uint16_t OfflineQueue::count(Destination destination) { return gCounts[indexOf(destination)]; }
+uint16_t OfflineQueue::count() {
+  const uint32_t total = static_cast<uint32_t>(gCounts[0]) + static_cast<uint32_t>(gCounts[1]);
+  return total > 65535U ? 65535U : static_cast<uint16_t>(total);
+}
 uint32_t OfflineQueue::droppedCount(Destination destination) { return gDropped[indexOf(destination)]; }
 void OfflineQueue::clear(Destination destination) {
   LittleFS.remove(pathOf(destination));
