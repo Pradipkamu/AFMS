@@ -13,6 +13,7 @@
 #include "src/Communication/WiFiManager.h"
 #include "src/Communication/CloudManager.h"
 #include "src/Communication/CommunicationManager.h"
+#include "src/Communication/AfmsWebClient.h"
 #include "src/Communication/RemoteConfigManager.h"
 #include "src/Communication/ReconnectManager.h"
 #include "src/Communication/OtaManager.h"
@@ -37,6 +38,7 @@ void setup() {
   MachineEngine::begin();
   CloudManager::begin();
   CommunicationManager::begin();
+  AfmsWebClient::begin();
   RemoteConfigManager::begin();
   ReconnectManager::begin();
   ShiftManager::begin();
@@ -57,7 +59,10 @@ void loop() {
   ReconnectManager::update();
   RemoteConfigManager::update();
   CommunicationManager::update();
-  if (!ReliabilityManager::safeMode()) CloudManager::update();
+  if (!ReliabilityManager::safeMode()) {
+    AfmsWebClient::update();
+    CloudManager::update();
+  }
   WebManager::update();
   OtaManager::update();
   SerialDiagnostics::update();
