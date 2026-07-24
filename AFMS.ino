@@ -49,8 +49,6 @@ void setup() {
 void loop() {
   ReliabilityManager::update();
 
-  // Local machine control and HMI acknowledgement have priority over
-  // network maintenance so loss release and production capture stay fast.
   MachineEngine::update();
   HMIManager::update();
   ShiftManager::update();
@@ -58,9 +56,11 @@ void loop() {
 
   WiFiManager::update();
   ReconnectManager::update();
-  if (!ReliabilityManager::safeMode()) {
-    CloudManager::update();
-  }
+
+  // CloudManager always captures critical events into LittleFS. It suppresses
+  // network delivery internally while safe mode is active.
+  CloudManager::update();
+
   WebManager::update();
   OtaManager::update();
   SerialDiagnostics::update();

@@ -1,9 +1,10 @@
 #include "OfflineQueue.h"
+#include "../Reporting/ReportOutboxManager.h"
 #include <LittleFS.h>
 
 namespace {
 const char *kQueuePath = "/offline.queue";
-uint16_t gCount = 0;
+uint16_t gLegacyCount = 0;
 
 uint16_t recount() {
   File file = LittleFS.open(kQueuePath, "r");
@@ -19,7 +20,7 @@ uint16_t recount() {
 }
 
 bool OfflineQueue::begin() {
-  gCount = recount();
+  gLegacyCount = recount();
   return true;
 }
 
@@ -28,7 +29,7 @@ bool OfflineQueue::push(const String &record) {
   if (!file) return false;
   const bool ok = file.println(record) > 0;
   file.close();
-  if (ok && gCount < 65535U) ++gCount;
+  if (ok && gLegacyCount < 65535U) ++gLegacyCount;
   return ok;
 }
 
@@ -60,8 +61,11 @@ bool OfflineQueue::pop() {
   temp.close();
   LittleFS.remove(kQueuePath);
   if (!LittleFS.rename("/offline.tmp", kQueuePath)) return false;
-  if (gCount > 0) --gCount;
+  if (gLegacyCount > 0) --gLegacyCount;
   return true;
 }
 
-uint16_t OfflineQueue::count() { return gCount; }
+uint16_t OfflineQueue::count() {
+  const uint16_t outbox = ReportOutboxManager::count();
+  return outbox ? outbox : gLegacyCount;
+}
