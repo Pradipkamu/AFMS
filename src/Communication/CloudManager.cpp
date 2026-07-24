@@ -57,8 +57,19 @@ String buildEventPayload(const Event &event){
   payload+=F(",\"reject\":");payload+=machine.rejectParts;payload+=F(",\"good\":");payload+=machine.goodParts;payload+=F(",\"alarm\":");payload+=machine.alarmActive?F("true"):F("false");payload+='}';return payload;
 }
 
-bool upload(const String &payload){if(!CommunicationManager::googleEnabled())return false;const char *url=Config::googleWebAppUrl();if(!url||!url[0]){gConnected=false;return false;}const HttpResult result=HttpClientManager::postJson(url,payload);if(result.success()){gConnected=true;++gSuccess;return true;}gConnected=false;++gFailure;return false;}
-bool queuePayload(const String &payload){if(!CommunicationManager::googleEnabled())return false;if(OfflineQueue::push(payload))return true;++gFailure;return false;}
+// 1 = uploaded, 0 = real failure, -1 = deferred because another network task used this loop.
+int8_t upload(const String &payload){
+  if(!CommunicationManager::googleEnabled())return 0;
+  const char *url=Config::googleWebAppUrl();
+  if(!url||!url[0]){gConnected=false;Logger::warn(F("[GOOGLE] Upload skipped: Web App URL missing"));return 0;}
+  const HttpResult result=HttpClientManager::postJson(url,payload);
+  if(result.code==-3)return -1;
+  Logger::info(String(F("[GOOGLE] HTTP status: "))+result.code);
+  if(result.success()){gConnected=true;++gSuccess;return 1;}
+  gConnected=false;++gFailure;return 0;
+}
+
+bool queuePayload(const String &payload){if(!CommunicationManager::googleEnabled())return false;if(OfflineQueue::push(payload))return true;++gFailure;Logger::error(F("[GOOGLE] Failed to queue payload"));return false;}
 
 bool parsePending(const String &line,uint32_t &notBefore,String &payload){const int separator=line.indexOf('\t');if(separator<=0)return false;notBefore=static_cast<uint32_t>(strtoul(line.substring(0,separator).c_str(),nullptr,10));payload=line.substring(separator+1);return notBefore&&payload.length();}
 bool loadFirstPending(){gPendingPayload="";gPendingNotBeforeEpoch=0;File file=LittleFS.open(kPendingPath,"r");if(!file||!file.available()){if(file)file.close();return false;}const String line=file.readStringUntil('\n');file.close();return parsePending(line,gPendingNotBeforeEpoch,gPendingPayload);}
@@ -78,7 +89,18 @@ void schedulePeriodicSummary(){
 }
 
 uint32_t retryDelay(){const uint8_t exponent=gQueueFailureStreak>5?5:gQueueFailureStreak;uint32_t delayMs=kQueueRetryBaseMs<<exponent;return delayMs>kQueueRetryMaxMs?kQueueRetryMaxMs:delayMs;}
-void processQueuedUpload(){if(!CommunicationManager::googleEnabled()){gConnected=false;return;}if(!WiFiManager::connected()){gConnected=false;return;}String queued;if(!OfflineQueue::peek(queued)){gQueueFailureStreak=0;gNextQueueRetryMs=0;return;}const uint32_t now=millis();if(gNextQueueRetryMs&&static_cast<int32_t>(now-gNextQueueRetryMs)<0)return;if(upload(queued)){OfflineQueue::pop();gQueueFailureStreak=0;gNextQueueRetryMs=now+kQueueSuccessCooldownMs;}else{if(gQueueFailureStreak<255)++gQueueFailureStreak;gNextQueueRetryMs=now+retryDelay();}}
+void processQueuedUpload(){
+  if(!CommunicationManager::googleEnabled()){gConnected=false;return;}
+  if(!WiFiManager::connected()){gConnected=false;return;}
+  String queued;
+  if(!OfflineQueue::peek(queued)){gQueueFailureStreak=0;gNextQueueRetryMs=0;return;}
+  const uint32_t now=millis();
+  if(gNextQueueRetryMs&&static_cast<int32_t>(now-gNextQueueRetryMs)<0)return;
+  const int8_t result=upload(queued);
+  if(result<0)return;
+  if(result>0){OfflineQueue::pop();gQueueFailureStreak=0;gNextQueueRetryMs=now+kQueueSuccessCooldownMs;Logger::info(F("[GOOGLE] Queued upload successful"));}
+  else{if(gQueueFailureStreak<255)++gQueueFailureStreak;const uint32_t delayMs=retryDelay();gNextQueueRetryMs=now+delayMs;Logger::warn(String(F("[GOOGLE] Retry in "))+(delayMs/1000UL)+F(" sec"));}
+}
 }
 
 void CloudManager::begin(){HttpClientManager::begin(10000);TimeManager::begin();OfflineQueue::begin();TelegramClient::begin();loadFirstPending();gLastPeriodBucket=0;gScheduleInitialized=false;gConnected=false;gNextQueueRetryMs=0;gQueueFailureStreak=0;}
@@ -88,7 +110,9 @@ void CloudManager::update(){
     if(event.type==EventType::LossSelected&&event.value>=1&&event.value<=16)TelegramClient::queueLoss(static_cast<uint16_t>(event.value),event.durationSeconds);
     if(!CommunicationManager::googleEnabled())continue;
     if(event.type==EventType::MachineReady)queuePayload(buildEventPayload(event));
-    else if(event.type==EventType::LossSelected&&CommunicationManager::googleBreakdownImmediate())queuePayload(buildEventPayload(event));
+    else if(event.type==EventType::LossSelected&&CommunicationManager::googleBreakdownImmediate()){
+      if(queuePayload(buildEventPayload(event)))Logger::info(String(F("[GOOGLE] Loss queued: code "))+event.value+F(", duration ")+event.durationSeconds+F(" sec"));
+    }
   }
   if(CommunicationManager::googleEnabled()){
     String shiftSummary;if(ShiftManager::consumeCompletedSummary(shiftSummary))queuePayload(shiftSummary);
