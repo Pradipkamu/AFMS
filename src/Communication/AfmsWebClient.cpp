@@ -27,7 +27,7 @@ void detectTriggers(){
   if(m.state!=gLastState){CommunicationManager::notify(CommunicationManager::Trigger::StatusChange);gLastState=m.state;}
   if(loss!=gLastLoss){CommunicationManager::notify(CommunicationManager::Trigger::LossChange);gLastLoss=loss;}
   const uint32_t milestone=CommunicationManager::productionMilestone();
-  if(milestone&&m.totalParts/gMilestone!=gLastParts/gMilestone) CommunicationManager::notify(CommunicationManager::Trigger::ProductionMilestone);
+  if(milestone&&m.totalParts/milestone!=gLastParts/milestone) CommunicationManager::notify(CommunicationManager::Trigger::ProductionMilestone);
   gLastParts=m.totalParts;
 }
 
