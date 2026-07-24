@@ -30,6 +30,13 @@ uint16_t recount(const char *path) {
   return lines;
 }
 
+size_t fileBytes(OfflineQueue::Destination destination) {
+  File file = LittleFS.open(pathOf(destination), "r");
+  const size_t bytes = file ? file.size() : 0;
+  if (file) file.close();
+  return bytes;
+}
+
 bool removeFirst(OfflineQueue::Destination destination) {
   const char *path = pathOf(destination);
   const char *tempPath = tempOf(destination);
@@ -62,10 +69,7 @@ bool OfflineQueue::begin() {
 bool OfflineQueue::enqueue(Destination destination, const String &eventId, const String &payload) {
   if (!eventId.length() || !payload.length()) return false;
   const uint8_t index = indexOf(destination);
-  File existing = LittleFS.open(pathOf(destination), "r");
-  const size_t bytes = existing ? existing.size() : 0;
-  if (existing) existing.close();
-  while (gCounts[index] >= kMaxRecords || bytes >= kMaxFileBytes) {
+  while (gCounts[index] >= kMaxRecords || fileBytes(destination) >= kMaxFileBytes) {
     if (!removeFirst(destination)) break;
     ++gDropped[index];
   }
