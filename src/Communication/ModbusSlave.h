@@ -10,4 +10,11 @@ bool connected();
 uint32_t requestCount();
 uint32_t errorCount();
 uint32_t lastRequestMs();
+
+// Compatibility helper used by HMI diagnostics. Returns zero until the first
+// valid Modbus request, then the elapsed milliseconds since that request.
+inline uint32_t lastRequestAgeMs() {
+  const uint32_t last = lastRequestMs();
+  return last == 0 ? 0 : millis() - last;
+}
 }
