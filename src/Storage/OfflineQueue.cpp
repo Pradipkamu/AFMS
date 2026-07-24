@@ -7,6 +7,7 @@ constexpr uint16_t kMaxRecords = 250;
 constexpr size_t kMaxFileBytes = 96U * 1024U;
 uint16_t gCounts[2] = {0, 0};
 uint32_t gDropped[2] = {0, 0};
+uint32_t gLegacySequence = 0;
 
 uint8_t indexOf(OfflineQueue::Destination destination) {
   return destination == OfflineQueue::Destination::AfmsWeb ? 0 : 1;
@@ -57,6 +58,17 @@ bool removeFirst(OfflineQueue::Destination destination) {
   const uint8_t index = indexOf(destination);
   if (gCounts[index]) --gCounts[index];
   return true;
+}
+
+String legacyEventId() {
+  ++gLegacySequence;
+  String id = F("google-");
+  id += ESP.getChipId();
+  id += '-';
+  id += millis();
+  id += '-';
+  id += gLegacySequence;
+  return id;
 }
 }
 
@@ -110,4 +122,17 @@ void OfflineQueue::clear(Destination destination) {
   LittleFS.remove(pathOf(destination));
   LittleFS.remove(tempOf(destination));
   gCounts[indexOf(destination)] = 0;
+}
+
+bool OfflineQueue::push(const String &payload) {
+  return enqueue(Destination::GoogleSheets, legacyEventId(), payload);
+}
+
+bool OfflineQueue::peek(String &payload) {
+  String eventId;
+  return peek(Destination::GoogleSheets, eventId, payload);
+}
+
+bool OfflineQueue::pop() {
+  return removeHead(Destination::GoogleSheets);
 }
