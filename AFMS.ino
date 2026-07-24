@@ -11,6 +11,7 @@
 #include "src/Storage/RuntimeStateManager.h"
 #include "src/Communication/WiFiManager.h"
 #include "src/Communication/CloudManager.h"
+#include "src/Communication/CommunicationManager.h"
 #include "src/Communication/ReconnectManager.h"
 #include "src/Communication/OtaManager.h"
 #include "src/Communication/WebManager.h"
@@ -21,14 +22,9 @@
 void setup() {
   Serial1.begin(HardwareConfig::DiagnosticBaud);
   delay(10);
-
   Logger::begin(Serial1);
   Logger::info(F("Booting AFMS " AFMS_VERSION));
-
-  if (!LittleFSManager::begin()) {
-    Logger::error(F("LittleFS mount failed"));
-  }
-
+  if (!LittleFSManager::begin()) Logger::error(F("LittleFS mount failed"));
   ReliabilityManager::begin();
   Config::load();
   LossCatalog::begin();
@@ -37,6 +33,7 @@ void setup() {
   WiFiManager::begin(Config::wifiSsid(), Config::wifiPassword());
   MachineEngine::begin();
   CloudManager::begin();
+  CommunicationManager::begin();
   ReconnectManager::begin();
   ShiftManager::begin();
   RuntimeStateManager::begin();
@@ -48,19 +45,14 @@ void setup() {
 
 void loop() {
   ReliabilityManager::update();
-
-  // Local machine control and HMI acknowledgement have priority over
-  // network maintenance so loss release and production capture stay fast.
   MachineEngine::update();
   HMIManager::update();
   ShiftManager::update();
   RuntimeStateManager::update();
-
   WiFiManager::update();
   ReconnectManager::update();
-  if (!ReliabilityManager::safeMode()) {
-    CloudManager::update();
-  }
+  CommunicationManager::update();
+  if (!ReliabilityManager::safeMode()) CloudManager::update();
   WebManager::update();
   OtaManager::update();
   SerialDiagnostics::update();
